@@ -3,6 +3,7 @@
 from collections.abc import Sequence
 
 from sqlalchemy import ColumnElement, case, func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import StaleDataError
 
@@ -96,23 +97,55 @@ def get_incident(db: Session, incident_id: int) -> Incident:
     return incident
 
 
-def create_incident(db: Session, data: IncidentCreate, user_id: int | None = None) -> Incident:
-    incident = Incident(**data.model_dump(exclude_none=True), status=IncidentStatus.OPEN)
+def create_incident(
+    db: Session,
+    data: IncidentCreate,
+    user_id: int | None = None,
+    idempotency_key: str | None = None,
+) -> tuple[Incident, bool]:
+    """Cria o incidente. Devolve (incidente, criado_agora).
+
+    Com `idempotency_key`, um reenvio (ex.: o caminhão não recebeu a resposta por queda
+    de rede e tentou de novo) devolve o incidente já criado, sem duplicar.
+    """
+    if idempotency_key:
+        existing = _find_by_idempotency_key(db, idempotency_key)
+        if existing is not None:
+            return existing, False
+
+    incident = Incident(
+        **data.model_dump(exclude_none=True),
+        status=IncidentStatus.OPEN,
+        idempotency_key=idempotency_key,
+    )
     incident.events.append(
         IncidentEvent(
             type=IncidentEventType.CREATED, user_id=user_id, to_status=IncidentStatus.OPEN
         )
     )
     db.add(incident)
-    db.commit()
-    return incident
+    try:
+        db.commit()
+    except IntegrityError:
+        # Duas requisições com a mesma chave ao mesmo tempo: a restrição UNIQUE do banco
+        # barrou a segunda. Devolve o incidente que a primeira criou.
+        db.rollback()
+        existing = _find_by_idempotency_key(db, idempotency_key) if idempotency_key else None
+        if existing is None:
+            raise
+        return existing, False
+    return incident, True
+
+
+def _find_by_idempotency_key(db: Session, idempotency_key: str) -> Incident | None:
+    return db.scalar(select(Incident).where(Incident.idempotency_key == idempotency_key))
 
 
 def update_incident(
     db: Session, incident_id: int, data: IncidentUpdate, user_id: int | None = None
 ) -> Incident:
     incident = get_incident(db, incident_id)
-    _ensure_version(incident, data.version)
+    ensure_version(incident, data.version)
 
     changed = {
         field: value for field, value in data.changes().items() if getattr(incident, field) != value
@@ -129,7 +162,7 @@ def update_incident(
             note=f"Campos alterados: {', '.join(sorted(changed))}",
         )
     )
-    _commit_or_conflict(db, incident_id)
+    commit_or_conflict(db, incident_id)
     return incident
 
 
@@ -138,11 +171,11 @@ def delete_incident(
 ) -> None:
     """Exclusão lógica: o registro some da operação, mas o histórico é preservado."""
     incident = get_incident(db, incident_id)
-    _ensure_version(incident, version)
+    ensure_version(incident, version)
 
     incident.deleted_at = utc_now()
     incident.events.append(IncidentEvent(type=IncidentEventType.DELETED, user_id=user_id))
-    _commit_or_conflict(db, incident_id)
+    commit_or_conflict(db, incident_id)
 
 
 def get_summary(db: Session) -> IncidentSummary:
@@ -169,18 +202,19 @@ def get_summary(db: Session) -> IncidentSummary:
     )
 
 
-def _conflict(incident: Incident) -> ConflictError:
+def conflict_error(incident: Incident, message: str = CONFLICT_MESSAGE) -> ConflictError:
+    """409 com o estado atual: o front atualiza a tela sem precisar de outra requisição."""
     current = IncidentRead.model_validate(incident).model_dump(mode="json")
-    return ConflictError(CONFLICT_MESSAGE, details={"current": current})
+    return ConflictError(message, details={"current": current})
 
 
-def _ensure_version(incident: Incident, expected_version: int) -> None:
+def ensure_version(incident: Incident, expected_version: int) -> None:
     """Primeira barreira: o cliente enviou a versão que leu, e ela já não é a atual."""
     if incident.version != expected_version:
-        raise _conflict(incident)
+        raise conflict_error(incident)
 
 
-def _commit_or_conflict(db: Session, incident_id: int) -> None:
+def commit_or_conflict(db: Session, incident_id: int) -> None:
     """Segunda barreira: outra gravação aconteceu entre a leitura e o commit.
 
     O SQLAlchemy grava com "WHERE version = <lida>"; se nenhuma linha for afetada,
@@ -190,4 +224,4 @@ def _commit_or_conflict(db: Session, incident_id: int) -> None:
         db.commit()
     except StaleDataError:
         db.rollback()
-        raise _conflict(get_incident(db, incident_id)) from None
+        raise conflict_error(get_incident(db, incident_id)) from None

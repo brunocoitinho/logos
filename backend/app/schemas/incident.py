@@ -13,7 +13,7 @@ from pydantic import (
     model_validator,
 )
 
-from app.models.enums import Criticality, IncidentCategory, IncidentStatus
+from app.models.enums import Criticality, IncidentCategory, IncidentEventType, IncidentStatus
 
 BRAZILIAN_STATES = {
     "AC", "AL", "AM", "AP", "BA", "CE", "DF", "ES", "GO", "MA", "MG", "MS", "MT", "PA",
@@ -175,6 +175,33 @@ class IncidentRead(BaseModel):
     version: int
     created_at: UtcDatetime
     updated_at: UtcDatetime
+
+
+class ReleaseRequest(StrictInput):
+    version: int = Field(ge=1, description="Versão que o cliente leu (optimistic locking).")
+    note: Annotated[str, Field(max_length=500)] | None = None
+
+
+class TransitionRequest(StrictInput):
+    """Fechar, marcar como inconclusivo ou reabrir. Assumir e liberar têm ações próprias."""
+
+    version: int = Field(ge=1, description="Versão que o cliente leu (optimistic locking).")
+    to_status: IncidentStatus
+    note: Annotated[str, Field(min_length=5, max_length=2000)] = Field(
+        description="Resolução (ao fechar/inconclusivo) ou motivo (ao reabrir). Obrigatória."
+    )
+
+
+class IncidentEventRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    type: IncidentEventType
+    from_status: IncidentStatus | None
+    to_status: IncidentStatus | None
+    note: str | None
+    user: UserSummary | None
+    created_at: UtcDatetime
 
 
 class IncidentList(BaseModel):
