@@ -2,7 +2,7 @@
 
 MVP de uma plataforma para centralizar e priorizar incidentes de uma frota de 5.000 caminhões, substituindo a operação via WhatsApp e planilhas manuais.
 
-> Projeto em construção para o case prático de Desenvolvedor Fullstack da AutoU.
+> Projeto em construção para um case prático de Desenvolvedor Fullstack.
 
 ## Stack
 
