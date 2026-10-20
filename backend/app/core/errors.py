@@ -12,6 +12,7 @@ from typing import Any
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import InterfaceError, OperationalError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 logger = logging.getLogger("logos")
@@ -49,6 +50,11 @@ class ForbiddenError(AppError):
 class TooManyRequestsError(AppError):
     status_code = 429
     code = "TOO_MANY_REQUESTS"
+
+
+class InvalidTransitionError(AppError):
+    status_code = 422
+    code = "INVALID_TRANSITION"
 
 
 class NotFoundError(AppError):
@@ -110,6 +116,18 @@ async def handle_http_error(request: Request, exc: StarletteHTTPException) -> JS
     return error_response(exc.status_code, code, message)
 
 
+async def handle_database_unavailable(request: Request, exc: Exception) -> JSONResponse:
+    # Falha de conexão (banco fora, reiniciando ou lento demais): erro temporário.
+    # O cliente recebe 503 e sabe que pode tentar de novo; nada de detalhe interno.
+    logger.warning("Banco indisponível em %s %s: %s", request.method, request.url.path, exc)
+    return error_response(
+        503,
+        "SERVICE_UNAVAILABLE",
+        "Banco de dados temporariamente indisponível. Tente novamente em instantes.",
+        headers={"Retry-After": "5"},
+    )
+
+
 async def handle_unexpected_error(request: Request, exc: Exception) -> JSONResponse:
     # O detalhe vai para o log do servidor, nunca para o cliente.
     logger.exception("Erro inesperado em %s %s", request.method, request.url.path)
@@ -120,4 +138,6 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(AppError, handle_app_error)
     app.add_exception_handler(RequestValidationError, handle_validation_error)
     app.add_exception_handler(StarletteHTTPException, handle_http_error)
+    app.add_exception_handler(OperationalError, handle_database_unavailable)
+    app.add_exception_handler(InterfaceError, handle_database_unavailable)
     app.add_exception_handler(Exception, handle_unexpected_error)

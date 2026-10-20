@@ -5,4 +5,5 @@ from pydantic import BaseModel
 
 class HealthResponse(BaseModel):
     status: Literal["ok", "degraded"]
+    database: Literal["up", "down"]
     environment: str
