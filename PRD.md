@@ -1,6 +1,6 @@
 # PRD — Logos: Central de Resposta a Incidentes (MVP)
 
-> Case prático AutoU — Desenvolvedor Fullstack
+> Case prático — Desenvolvedor Fullstack
 > Autor: Bruno Coitinho Pereira
 > Início: 20/10/2026 · **Prazo: 21/10/2026 às 23h59** · Meta interna: entregar até 22h00
 
@@ -31,7 +31,7 @@ O **Logos** é o MVP da plataforma que centraliza esses incidentes. É uma **fer
 
 ---
 
-## 2. Requisitos do case (fonte: Notion da AutoU)
+## 2. Requisitos do case (fonte: enunciado do case)
 
 ### 2.1 Funcionais obrigatórios
 
@@ -261,7 +261,7 @@ Códigos: `400/422` validação, `401` sem token, `403` sem permissão, `404` n�
 | Base | **Vite + React + TypeScript** | SPA simples, build rápido. Mesmo setup do portfólio |
 | Estado de servidor | **TanStack Query** | Ver seção 6 |
 | HTTP | **Axios** | Já usado no trabalho; interceptor para JWT e 401 |
-| UI | **Tailwind CSS + shadcn/ui** (Radix) | Componentes acessíveis, dark mode nativo; já visto no projeto do Portal |
+| UI | **Tailwind CSS + shadcn/ui** (Radix) | Componentes acessíveis, dark mode nativo; já usado em projetos anteriores |
 | Formulários | **React Hook Form + Yup** | Já usados no trabalho |
 | Rotas | **React Router** | Login + painel |
 | Toasts | **Sonner** | Feedback de ações |

@@ -218,23 +218,43 @@ git add progress.md && git commit -m "docs: registra conclusão da etapa 3"
 
 ### Etapa 4 — CRUD, filtros e validação
 
-Status: pendente
+Status: **concluída** (20/10/2026) · Branch: `feat/incidents-crud`
 
-- [ ] Schemas Pydantic de entrada e saída (validação estrita, `extra="forbid"`)
-- [ ] `GET /api/incidents` com filtros múltiplos, busca, paginação e ordenação por prioridade
-- [ ] `GET /api/incidents/summary`
-- [ ] `GET/POST/PATCH/DELETE` (soft delete)
-- [ ] Handler de erros com formato padronizado
-- [ ] **Testes:** V1–V4 (validação) · F1–F5 (filtros, ordem de prioridade, summary)
+- [x] Schemas Pydantic de entrada e saída (validação estrita, `extra="forbid"`, normalização de placa/rodovia/UF, datas convertidas para UTC)
+- [x] `GET /api/incidents` com filtros múltiplos, busca, paginação e ordenação por prioridade feita no banco
+- [x] `GET /api/incidents/summary`
+- [x] `GET/POST/PATCH/DELETE` (soft delete); PATCH e DELETE exigem `version`
+- [x] Handler de erros com formato padronizado (validação, 404/405, conflito e 500 sem detalhes internos)
+- [x] **Testes:** V1–V4 · F1–F5 · **C2 e C5 adiantados da Etapa 6** (PATCH/DELETE já exigem versão)
 
-Commits sugeridos:
+Decisões desta etapa:
+
+- **Filtros como modelo Pydantic na query string:** parâmetro desconhecido (ex.: `?statuz=`) gera 422 em vez de ser ignorado em silêncio.
+- **Filtro padrão = Aberto + Em Investigação** (gestão por exceção). Fechados só aparecem quando pedidos.
+- **Ordenação por prioridade com `CASE` no SQL**, e não em Python: funciona com paginação e escala com o volume.
+- **PATCH não muda status:** status só muda pelas ações de ciclo de vida (Etapa 6), que têm regras próprias. Campos desconhecidos como `status` ou `assigned_to_id` são recusados.
+- **Duas barreiras de concorrência:** (1) a versão enviada pelo cliente é comparada com a atual; (2) se outra gravação ocorrer entre a leitura e o commit, o `StaleDataError` vira 409. As duas devolvem o estado atual em `error.details.current`, para o front atualizar a tela sem nova requisição.
+- **Busca com `autoescape`:** `%` e `_` digitados são texto, não curinga.
+- **Placa:** aceita o formato antigo (ABC1234) e o Mercosul (ABC1D23), com hífen ou espaço.
+
+Verificação:
+
+- `ruff check` / `ruff format`: sem erros.
+- `pytest --cov`: **95 passaram**, cobertura **98%**.
+- API rodando contra o banco de dev com o seed: os 5 primeiros da lista são Aberto + Alta + Acidente com Vítimas, do mais antigo para o mais recente; o summary bate com o seed; os erros saem no formato padrão.
+
+Commits sugeridos (um comando por linha, a partir da raiz):
 
 ```bash
-git commit -m "feat(backend): adiciona schemas de incidente com validação estrita"
-git commit -m "feat(backend): implementa CRUD de incidentes com ordenação por prioridade e filtros"
-git commit -m "feat(backend): adiciona endpoint de resumo dos incidentes"
-git commit -m "feat(backend): padroniza respostas de erro com handlers globais de exceção"
-git commit -m "test(backend): cobre validação de entrada, filtros e ordenação por prioridade"
+git add backend/app/core/errors.py backend/app/schemas/errors.py && git commit -m "feat(backend): padroniza respostas de erro com handlers globais de exceção"
+
+git add backend/app/schemas/incident.py && git commit -m "feat(backend): adiciona schemas de incidente com validação estrita"
+
+git add backend/app/services backend/app/api backend/app/main.py && git commit -m "feat(backend): implementa CRUD de incidentes com ordenação por prioridade, filtros e resumo"
+
+git add backend/tests && git commit -m "test(backend): cobre validação, filtros, ordem de prioridade e conflitos de versão"
+
+git add progress.md PRD.md README.md && git commit -m "docs: registra conclusão da etapa 4"
 ```
 
 ### Etapa 5 — Autenticação
@@ -268,7 +288,7 @@ Status: pendente
 - [ ] Registro em `incident_events` + `GET /api/incidents/{id}/events`
 - [ ] `Idempotency-Key` no POST
 - [ ] Retry com backoff (`tenacity`) em falha transitória; 503 quando o banco está fora
-- [ ] **Testes de concorrência:** C1 (10 threads → 1 vencedor) · C2–C6
+- [ ] **Testes de concorrência:** C1 (10 threads → 1 vencedor) · C3, C4, C6 (C2 e C5 já feitos na Etapa 4)
 - [ ] **Testes de ciclo de vida:** L1 (transições válidas) · L2 (todas as inválidas, geradas automaticamente) · L3
 - [ ] **Testes de resiliência:** R1–R3
 
