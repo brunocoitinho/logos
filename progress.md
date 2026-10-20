@@ -61,6 +61,7 @@ feat/*, test/*, chore/*, docs/*  ← um branch por etapa, criado a partir de env
 | D11 | 20/10/2026 | Meta de cobertura ≥ 90% em services/api e hooks | Mesmo critério usado no trabalho |
 | D12 | 20/10/2026 | Fluxo `feature → env/dev → main` com PRs e merge commit (sem squash) | Mostra o processo de construção; preserva o histórico granular |
 | D13 | 20/10/2026 | CI/CD do backend no GitHub Actions: testes em todo PR; deploy automático na VPS a cada push na `main` | Antecipado da Etapa 15 por estar à frente do cronograma; cada PR do frontend já passa pelo CI |
+| D14 | 20/10/2026 | Estilos com **Tailwind + shadcn/ui** (e não Sass + CSS Modules) | Componentes acessíveis prontos (Radix) e tokens de tema; ~4–6 h a menos no prazo. Justificativa e cola Tailwind → CSS no PRD §6.1 |
 
 ---
 
