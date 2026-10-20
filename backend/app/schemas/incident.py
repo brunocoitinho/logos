@@ -20,6 +20,10 @@ BRAZILIAN_STATES = {
     "PB", "PE", "PI", "PR", "RJ", "RN", "RO", "RR", "RS", "SC", "SE", "SP", "TO",
 }  # fmt: skip
 
+# Maior valor de uma coluna INT do MySQL: ids e versões acima disso não podem existir.
+MAX_INT = 2_147_483_647
+MAX_OFFSET = 1_000_000
+
 # Tolerância para relógios de dispositivos levemente adiantados.
 FUTURE_TOLERANCE = timedelta(minutes=5)
 
@@ -63,6 +67,9 @@ Kilometer = Annotated[
     PlainSerializer(float, return_type=float),
 ]
 Title = Annotated[str, Field(min_length=3, max_length=120)]
+Version = Annotated[
+    int, Field(ge=1, le=MAX_INT, description="Versão que o cliente leu (optimistic locking).")
+]
 Description = Annotated[str, Field(max_length=2000)]
 City = Annotated[str, Field(min_length=2, max_length=100)]
 InputDatetime = Annotated[datetime, AfterValidator(_to_utc_naive)]
@@ -103,7 +110,7 @@ class IncidentCreate(StrictInput):
 class IncidentUpdate(StrictInput):
     """Edição de dados descritivos. Status muda apenas pelas ações de ciclo de vida."""
 
-    version: int = Field(ge=1, description="Versão que o cliente leu (optimistic locking).")
+    version: Version
     title: Title | None = None
     description: Description | None = None
     category: IncidentCategory | None = None
@@ -144,7 +151,9 @@ class IncidentFilters(BaseModel):
     category: list[IncidentCategory] = Field(default_factory=list)
     q: str | None = Field(default=None, min_length=1, max_length=100, description="Busca textual")
     limit: int = Field(default=100, ge=1, le=200)
-    offset: int = Field(default=0, ge=0)
+    # Teto explícito: sem ele, um offset gigante chegava ao MySQL e virava erro 500
+    # (encontrado pelo Schemathesis com offset = 2^64).
+    offset: int = Field(default=0, ge=0, le=MAX_OFFSET)
 
 
 class UserSummary(BaseModel):
@@ -178,14 +187,14 @@ class IncidentRead(BaseModel):
 
 
 class ReleaseRequest(StrictInput):
-    version: int = Field(ge=1, description="Versão que o cliente leu (optimistic locking).")
+    version: Version
     note: Annotated[str, Field(max_length=500)] | None = None
 
 
 class TransitionRequest(StrictInput):
     """Fechar, marcar como inconclusivo ou reabrir. Assumir e liberar têm ações próprias."""
 
-    version: int = Field(ge=1, description="Versão que o cliente leu (optimistic locking).")
+    version: Version
     to_status: IncidentStatus
     note: Annotated[str, Field(min_length=5, max_length=2000)] = Field(
         description="Resolução (ao fechar/inconclusivo) ou motivo (ao reabrir). Obrigatória."

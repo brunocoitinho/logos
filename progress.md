@@ -360,10 +360,43 @@ git add progress.md PRD.md && git commit -m "docs: registra conclusão da etapa 
 
 ### Etapa 7 — Cobertura e robustez extra
 
-Status: **cobertura atingida na Etapa 6** (96% no total; services e rotas entre 99% e 100%)
+Status: **concluída** (20/10/2026) · Branch: `test/schemathesis`
 
-- [x] Relatório de cobertura; ≥ 90% em `services/` e `api/`
-- [ ] *(diferencial, se houver tempo — item 1 da ordem de corte)* V5: Schemathesis contra o OpenAPI, sem nenhuma resposta 500
+- [x] Relatório de cobertura; ≥ 90% em `services/` e `api/` (atingido na Etapa 6)
+- [x] V5: Schemathesis contra o OpenAPI, em todos os 13 endpoints
+
+O que o teste verifica, para qualquer entrada gerada (textos enormes, tipos errados, valores fora dos limites, campos faltando):
+
+- nenhuma requisição causa erro 500 (`not_a_server_error`);
+- dado inválido é sempre recusado com 4xx (`negative_data_rejection`);
+- toda resposta segue o formato documentado no Swagger (`response_schema_conformance`).
+
+**Bug real encontrado pelo Schemathesis:**
+
+- `GET /api/incidents?offset=18446744073709551616` (2⁶⁴) → **erro 500**. O `offset` não tinha teto: o número passava pela validação, estourava o tipo do `OFFSET` no MySQL e virava erro de SQL. Nenhum teste manual tinha tentado um número desse tamanho.
+- Correção: `offset` ≤ 1.000.000; ids e versões ≤ 2.147.483.647 (maior valor de uma coluna `INT` do MySQL).
+- O caso virou teste de regressão em `test_incidents_list.py`.
+- Bom exemplo para o vídeo: o teste baseado em propriedades achou o que os testes escritos à mão não acharam.
+
+Decisões:
+
+- **40 exemplos por endpoint no dia a dia** (a suíte inteira roda em ~25 s). Rodada pesada sob demanda: `FUZZ_EXAMPLES=200 pytest tests/test_api_fuzzing.py` (cerca de 2.600 requisições, ~40 s). O bug só apareceu na rodada pesada, por isso ela vale antes de cada release.
+- Incidentes com ids 1, 2 e 3 criados antes do fuzzing: o gerador tende a usar ids baixos, então os endpoints de detalhe, edição e ciclo de vida são exercitados de verdade, e não só respondem 404.
+
+Verificação:
+
+- `pytest --cov`: **207 passaram**, cobertura 96%.
+- Rodada pesada (200 exemplos × 13 endpoints) depois da correção: 13 passaram.
+
+Commits sugeridos (um comando por linha, a partir da raiz):
+
+```bash
+git add backend/tests/test_api_fuzzing.py backend/requirements-dev.txt .gitignore && git commit -m "test(backend): adiciona testes baseados em propriedades com Schemathesis"
+
+git add backend/app/schemas/incident.py backend/app/api/routes/incidents.py backend/tests/test_incidents_list.py && git commit -m "fix(backend): limita offset, ids e versões para evitar erro 500 com números gigantes"
+
+git add progress.md && git commit -m "docs: registra conclusão da etapa 7"
+```
 
 ### Etapa 8 — Deploy da API na VPS (walking skeleton)
 

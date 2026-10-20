@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Header, Path, Query, Response, status
 from app.api.deps import CurrentUser, DbDep, get_current_user
 from app.schemas.errors import ErrorResponse
 from app.schemas.incident import (
+    MAX_INT,
     IncidentCreate,
     IncidentEventRead,
     IncidentFilters,
@@ -28,7 +29,7 @@ router = APIRouter(
     responses=UNAUTHORIZED,
 )
 
-IncidentId = Annotated[int, Path(ge=1)]
+IncidentId = Annotated[int, Path(ge=1, le=MAX_INT)]
 
 NOT_FOUND = {404: {"model": ErrorResponse, "description": "Incidente não encontrado"}}
 CONFLICT = {
@@ -112,7 +113,7 @@ def update_incident(
 )
 def delete_incident(
     incident_id: IncidentId,
-    version: Annotated[int, Query(ge=1, description="Versão que o cliente leu")],
+    version: Annotated[int, Query(ge=1, le=MAX_INT, description="Versão que o cliente leu")],
     db: DbDep,
     current_user: CurrentUser,
 ) -> Response:
