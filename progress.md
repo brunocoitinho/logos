@@ -470,7 +470,7 @@ git add progress.md && git commit -m "docs: registra deploy da API em produção
 
 ### Etapa 8.1 — CI/CD do backend (antecipada)
 
-Status: **em andamento** · Branch: `ci/backend-pipeline`
+Status: **concluída** (20/10/2026) · Branch: `ci/backend-pipeline` · PRs #10 (env/dev) e #11 (release 1.1)
 
 - [x] `.github/workflows/backend.yml`: job `test` (Ruff + pytest contra MySQL real, cobertura mínima de 90%) em todo PR que mexe em `backend/` ou `infra/`
 - [x] Job `deploy` só em push na `main` e só se `test` passar: SSH na VPS → `deploy.sh` → confere `/api/health`
@@ -479,10 +479,19 @@ Status: **em andamento** · Branch: `ci/backend-pipeline`
 - [x] Cenário do CI simulado localmente (MySQL novo, banco criado pelo serviço): 208 testes, cobertura 96%
 - [x] Chave SSH exclusiva do deploy gerada (`~/.ssh/logos_deploy`); host key da VPS conferida com a já conhecida
 - [x] Badge do CI no README
-- [ ] Chave pública na VPS, restrita ao deploy (`restrict,command=...`)
-- [ ] Secrets no GitHub: `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS`
-- [ ] VPS seguindo a `main`
-- [ ] Primeiro deploy automático confirmado
+- [x] Chave pública na VPS, restrita ao deploy (`restrict,command=...`)
+- [x] Secrets no GitHub: `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS`
+- [x] VPS seguindo a `main` (`main...origin/main`, no commit do release do PR #9)
+- [x] Primeiro deploy automático confirmado: merge do PR #11 na `main` → testes ✅ → deploy ✅ → produção saudável. GitHub, VPS e deployment `production` no mesmo commit (`5b63feb`)
+
+Testes da chave restrita (feitos da máquina local contra a VPS):
+
+| Teste | Resultado |
+|---|---|
+| Autenticação com a chave do deploy | ✅ |
+| Comando injetado (`echo ...; cat /etc/shadow`) | ✅ ignorado; rodou só o `deploy.sh`, nenhuma linha do comando na saída |
+| Terminal interativo (`-tt`) | ✅ negado (`PTY allocation request failed`) |
+| Túnel para o MySQL (`-L`) | ✅ negado pelo servidor (`administratively prohibited`) |
 
 Decisões:
 
@@ -507,22 +516,51 @@ git add progress.md && git commit -m "docs: registra CI/CD do backend"
 
 ### Etapa 9 — Esqueleto do frontend
 
-Status: pendente
+Status: **concluída** (20/10/2026) · Branch: `feat/frontend-scaffold`
 
-- [ ] Vite + React + TS, Tailwind, shadcn/ui, Router, TanStack Query, Axios
-- [ ] Cliente Axios com interceptor de JWT e tratamento de 401
-- [ ] Tema claro/escuro com persistência
-- [ ] Layout base (header, toggle de tema)
-- [ ] Vitest + Testing Library + **MSW** (handlers base e utilitário `renderWithProviders`)
-- [ ] **Testes:** FE9 (401 → login) · FE10 (tema)
+- [x] Vite 8 + React 19 + TypeScript 6, Tailwind 4, shadcn/ui (preset Nova sobre Radix, fonte Geist), React Router 7, TanStack Query 5, Axios
+- [x] Cliente Axios: token no header, timeout de 10 s, erros normalizados (`ApiError`: resposta da API, queda de rede e timeout no mesmo formato) e 401 → encerra a sessão
+- [x] `QueryClient` com política de retry: repete rede/5xx até 3 vezes com espera crescente (1 s, 2 s, 4 s); não repete 4xx; nunca repete escritas
+- [x] Tema claro/escuro/sistema com persistência; script no `index.html` aplica o tema antes do React (sem "flash" de tela clara)
+- [x] Layout base (cabeçalho com marca, analista logado, tema e sair) e rota protegida
+- [x] Vitest + Testing Library + **MSW**; `renderWithProviders` e `renderApp`
+- [x] **Testes:** FE9 (401 → login com aviso) · FE10 (tema) + erros da API, política de retry, falha de rede com "Tentar novamente", logout
 
-Commits sugeridos:
+Decisões desta etapa:
+
+- **Contexto e Provider em arquivos separados** (`auth-context.ts` + `AuthProvider.tsx`; `theme-context.ts` + `ThemeProvider.tsx`): mantém o Fast Refresh funcionando (regra `only-export-components` do oxlint).
+- **Cliente HTTP não conhece o React Router:** o `AuthProvider` registra o que fazer no 401 (`setUnauthorizedHandler`).
+- **Token no `localStorage`:** simples e sobrevive ao F5. Trade-off documentado no código: vulnerável a XSS; a alternativa (cookie httpOnly) exigiria proteção CSRF e mesmo domínio.
+- **`@hookform/resolvers` 5.9** e não a 6.0: a 6.0, recém-lançada, tem conflito interno entre dependências opcionais. Não usamos `--legacy-peer-deps`, que esconderia problemas reais.
+- **Pacote `cn` auditado** antes de usar (veio com o shadcn): mantido pelo próprio autor do shadcn, repositório oficial, sem dependências; nenhum pacote do projeto roda script de instalação.
+- **Dependências enxutas:** removidos `clsx`, `tailwind-merge` e a fonte Inter (substituídos pelo `cn` e pela Geist do preset); `shadcn` só como dependência de build. `npm audit`: 0 vulnerabilidades.
+
+Problemas encontrados e corrigidos:
+
+- **Bug real (corrida no logout por 401):** ao limpar o token, a rota protegida também redirecionava para o login e sobrescrevia o estado da navegação; o aviso "sua sessão expirou" sumia. Corrigido guardando o motivo no contexto de autenticação. O teste FE9 pegou o bug.
+- **CORS no jsdom:** o ambiente de teste aplicava CORS (e o preflight do header `Authorization`) às respostas do MSW. Os testes passam a simular a página na mesma origem da API; o CORS real segue coberto no backend (S4).
+- **MSW 3:** a opção `onUnhandledRequest` virou `onUnhandledFrame` (cobre também WebSocket).
+
+Verificação:
+
+- `tsc -b` e `oxlint`: sem erros nem avisos.
+- `vitest run`: **21 passaram**; cobertura 84% (o que fica de fora é a montagem do `App`).
+- `npm run build`: 137 kB gzip; o painel de devtools do TanStack **não** entra no bundle de produção.
+
+Commits sugeridos (um comando por linha, a partir da raiz):
 
 ```bash
-git commit -m "chore(frontend): cria app React com Vite, Tailwind e shadcn/ui"
-git commit -m "feat(frontend): adiciona cliente da API e provider do TanStack Query"
-git commit -m "feat(frontend): adiciona alternância de tema claro/escuro"
-git commit -m "test(frontend): configura Vitest com MSW e cobre redirecionamento de auth e tema"
+git add frontend/.gitignore frontend/.oxlintrc.json frontend/.env.example frontend/components.json frontend/index.html frontend/package.json frontend/package-lock.json frontend/public frontend/tsconfig.json frontend/tsconfig.app.json frontend/tsconfig.node.json frontend/vite.config.ts frontend/src/index.css frontend/src/lib/utils.ts frontend/src/components/ui && git commit -m "chore(frontend): cria app React com Vite, Tailwind e shadcn/ui"
+
+git add frontend/src/api/auth.ts frontend/src/api/client.ts frontend/src/api/errors.ts frontend/src/api/types.ts frontend/src/lib/env.ts frontend/src/lib/query-client.ts && git commit -m "feat(frontend): adiciona cliente da API com erros padronizados e política de retry"
+
+git add frontend/src/features/theme/ThemeProvider.tsx frontend/src/features/theme/ThemeToggle.tsx frontend/src/features/theme/theme-context.ts && git commit -m "feat(frontend): adiciona alternância de tema claro/escuro"
+
+git add frontend/src/features/auth/AuthProvider.tsx frontend/src/features/auth/LoginPage.tsx frontend/src/features/auth/ProtectedRoute.tsx frontend/src/features/auth/auth-context.ts frontend/src/features/auth/token-storage.ts frontend/src/components/layout frontend/src/features/incidents frontend/src/routes.tsx frontend/src/App.tsx frontend/src/main.tsx && git commit -m "feat(frontend): adiciona sessão com JWT, rotas protegidas e layout base"
+
+git add frontend/src && git commit -m "test(frontend): configura Vitest com MSW e cobre sessão, tema, erros e retry"
+
+git add progress.md && git commit -m "docs: registra conclusão da etapa 9"
 ```
 
 ### Etapa 10 — Login
