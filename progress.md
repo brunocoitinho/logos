@@ -36,6 +36,7 @@ feat/*, test/*, chore/*, docs/*  ← um branch por etapa, criado a partir de env
 | 5 | `feat/auth` | env/dev |
 | 6–7 | `feat/incident-lifecycle` | env/dev |
 | 8 | `chore/deploy-api` | env/dev → **PR release para main** |
+| 8.1 | `ci/backend-pipeline` | env/dev → main |
 | 9–10 | `feat/frontend-scaffold` | env/dev |
 | 11 | `feat/incidents-dashboard` | env/dev |
 | 12–13 | `feat/incident-actions` | env/dev |
@@ -59,6 +60,7 @@ feat/*, test/*, chore/*, docs/*  ← um branch por etapa, criado a partir de env
 | D10 | 20/10/2026 | **MSW** no front, **Playwright** para E2E | Simular falhas de rede de verdade; testar dois analistas simultâneos (PRD §8.4) |
 | D11 | 20/10/2026 | Meta de cobertura ≥ 90% em services/api e hooks | Mesmo critério usado no trabalho |
 | D12 | 20/10/2026 | Fluxo `feature → env/dev → main` com PRs e merge commit (sem squash) | Mostra o processo de construção; preserva o histórico granular |
+| D13 | 20/10/2026 | CI/CD do backend no GitHub Actions: testes em todo PR; deploy automático na VPS a cada push na `main` | Antecipado da Etapa 15 por estar à frente do cronograma; cada PR do frontend já passa pelo CI |
 
 ---
 
@@ -464,6 +466,39 @@ Depois do deploy na VPS:
 git add backend/app/api/routes/health.py backend/tests/test_health.py && git commit -m "fix(backend): aceita HEAD no health check para monitores de uptime"
 
 git add progress.md && git commit -m "docs: registra deploy da API em produção"
+```
+
+### Etapa 8.1 — CI/CD do backend (antecipada)
+
+Status: **em andamento** · Branch: `ci/backend-pipeline`
+
+- [x] `.github/workflows/backend.yml`: job `test` (Ruff + pytest contra MySQL real, cobertura mínima de 90%) em todo PR que mexe em `backend/` ou `infra/`
+- [x] Job `deploy` só em push na `main` e só se `test` passar: SSH na VPS → `deploy.sh` → confere `/api/health`
+- [x] Environment `production` no GitHub (o repositório mostra os deploys com link para a API)
+- [x] Workflow validado com o actionlint (0 problemas)
+- [x] Cenário do CI simulado localmente (MySQL novo, banco criado pelo serviço): 208 testes, cobertura 96%
+- [x] Chave SSH exclusiva do deploy gerada (`~/.ssh/logos_deploy`); host key da VPS conferida com a já conhecida
+- [x] Badge do CI no README
+- [ ] Chave pública na VPS, restrita ao deploy (`restrict,command=...`)
+- [ ] Secrets no GitHub: `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS`
+- [ ] VPS seguindo a `main`
+- [ ] Primeiro deploy automático confirmado
+
+Decisões:
+
+- **Chave exclusiva e restrita:** no `authorized_keys`, `restrict,command="sh /opt/logos/infra/deploy.sh"`. A VPS ignora o comando pedido pelo cliente e roda só o deploy; `restrict` desliga terminal e túneis. Se a chave vazar, ela só dispara um deploy do código que já está na `main`.
+- **`known_hosts` fixo em secret** (e não `StrictHostKeyChecking=no`): o Actions só conecta na VPS verdadeira.
+- **Deploys em fila, nunca em paralelo nem cancelados no meio** (`concurrency` com `cancel-in-progress: false`); testes de um PR antigo são cancelados quando chega um push novo.
+- **Filtro de caminhos:** mudanças só no frontend não disparam testes nem deploy do backend.
+
+Commits sugeridos (um comando por linha, a partir da raiz):
+
+```bash
+git add .github/workflows/backend.yml && git commit -m "ci: adiciona pipeline do backend com testes e deploy automático na VPS"
+
+git add README.md && git commit -m "docs: adiciona badge do CI do backend ao README"
+
+git add progress.md && git commit -m "docs: registra CI/CD do backend"
 ```
 
 ---
