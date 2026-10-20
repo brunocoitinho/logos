@@ -20,6 +20,7 @@ class FakeApiClient:
         self.creations = list(creations or [])
         self.login_calls = 0
         self.tokens_used = []
+        self.keys_used = []
 
     def login(self, email, password):
         self.login_calls += 1
@@ -28,8 +29,9 @@ class FakeApiClient:
             raise result
         return result
 
-    def create_incident(self, token, payload):
+    def create_incident(self, token, payload, idempotency_key):
         self.tokens_used.append(token)
+        self.keys_used.append(idempotency_key)
         result = self.creations.pop(0) if self.creations else None
         if isinstance(result, Exception):
             raise result
@@ -85,3 +87,14 @@ def test_stops_when_credentials_are_rejected():
 
     with pytest.raises(LoginRejectedError):
         run_fake(client, count=1)
+
+
+def test_retry_reuses_the_same_idempotency_key():
+    """Se a resposta se perdeu, o reenvio usa a mesma chave e a API não duplica o incidente."""
+    client = FakeApiClient(creations=[urllib.error.URLError("timeout"), None, None])
+
+    run_fake(client, count=2)
+
+    first_attempt, retry, next_incident = client.keys_used
+    assert first_attempt == retry
+    assert next_incident != first_attempt

@@ -51,6 +51,10 @@ class Incident(Base):
     updated_at: Mapped[datetime] = mapped_column(PreciseDateTime, default=utc_now, onupdate=utc_now)
     deleted_at: Mapped[datetime | None] = mapped_column(PreciseDateTime)
 
+    # Chave enviada pelo cliente (header Idempotency-Key): um reenvio após falha de rede
+    # devolve o incidente já criado em vez de duplicá-lo. Única no banco.
+    idempotency_key: Mapped[str | None] = mapped_column(String(64), unique=True)
+
     assigned_to: Mapped[User | None] = relationship(lazy="joined")
     events: Mapped[list["IncidentEvent"]] = relationship(
         back_populates="incident",
