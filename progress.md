@@ -9,7 +9,7 @@
 
 - Uma etapa por vez; parar ao fim de cada etapa para revisão.
 - **Commits feitos pelo Bruno.** Ao fim de cada etapa: explicar o que foi feito e sugerir a mensagem de commit.
-- Commits pequenos, no padrão Conventional Commits (`feat`, `fix`, `chore`, `docs`, `test`, `refactor`, `ci`).
+- Commits pequenos, no padrão Conventional Commits: prefixo em inglês (`feat`, `fix`, `chore`, `docs`, `test`, `refactor`, `ci`) e **descrição em português**, no presente ("adiciona", "corrige", "cobre").
 - **Testes na mesma etapa da funcionalidade.** Uma etapa só é concluída com os testes dela passando.
 - Tecnologia nova (ex.: TanStack Query, MSW, Playwright) é explicada e justificada na documentação antes de usar.
 - Perguntar antes quando houver ambiguidade.
@@ -30,7 +30,8 @@ feat/*, test/*, chore/*, docs/*  ← um branch por etapa, criado a partir de env
 | Etapas | Branch | Destino |
 |---|---|---|
 | 0 | `main` (commit inicial) | — |
-| 1–3 | `feat/backend-scaffold` | env/dev |
+| 1 | `feat/backend-scaffold` | env/dev |
+| 2–3 | `feat/database-models` | env/dev |
 | 4 | `feat/incidents-crud` | env/dev |
 | 5 | `feat/auth` | env/dev |
 | 6–7 | `feat/incident-lifecycle` | env/dev |
@@ -96,81 +97,177 @@ git commit -m "docs: adiciona PRD e acompanhamento de progresso do MVP Logos"
 
 ### Etapa 1 — Esqueleto do backend
 
-Status: pendente
+Status: **concluída** (20/10/2026) · Branch: `feat/backend-scaffold`
 
-- [ ] `backend/` com `pyproject.toml`, venv, FastAPI, Uvicorn, Ruff
-- [ ] `core/config.py` com pydantic-settings e `.env.example`
-- [ ] Rota `GET /api/health`
-- [ ] `docker-compose.yml` na raiz com MySQL para desenvolvimento e testes
+- [x] `backend/` com `pyproject.toml` (config do Ruff e do pytest), `requirements.txt` e `requirements-dev.txt` com versões fixas, `.venv` local
+- [x] `core/config.py` com pydantic-settings e `.env.example`
+- [x] Rota `GET /api/health` + teste
+- [x] `docker-compose.yml` na raiz com MySQL 8.4 na porta **3307** (a 3306 já é usada pelo MySQL local) e criação automática do banco `logos_test`
+- [x] `.gitattributes` forçando LF (scripts com CRLF quebram em containers Linux)
+
+Decisões desta etapa:
+
+- Dependências via `requirements*.txt`, e não como pacote instalável: mais simples de explicar e de usar no Dockerfile. O `pyproject.toml` guarda só a configuração das ferramentas.
+- `create_app()` (factory) em `main.py`: facilita criar a app com configurações diferentes nos testes.
+- Dependências do FastAPI com `Annotated` (`app/api/deps.py`), o padrão recomendado atual (o Ruff acusa `Depends()` como valor padrão de argumento).
+- `httpx2` no lugar de `httpx`: o Starlette atual marca o `httpx` como obsoleto no TestClient.
+- A API roda fora do Docker em desenvolvimento (reload rápido); o compose local sobe só o MySQL.
+
+Verificação:
+
+- `ruff check` e `ruff format --check`: sem erros.
+- `pytest`: 1 passou, sem avisos.
+- API rodando: `GET /api/health` → 200 `{"status":"ok","environment":"development"}`; `/docs` → 200.
+- CORS: origem `http://localhost:5173` liberada; origem desconhecida recusada (400 no preflight).
+- `docker compose config`: válido. (Subida do MySQL será verificada na Etapa 2, com o Docker Desktop ligado.)
 
 Commits sugeridos:
 
 ```bash
+git add .gitattributes
+git commit -m "chore: normaliza finais de linha para LF com .gitattributes"
+
+git add backend/
 git commit -m "chore(backend): cria estrutura do projeto FastAPI com configurações e health check"
+
+git add docker-compose.yml infra/
 git commit -m "chore: adiciona docker compose com MySQL para desenvolvimento local"
+
+git add progress.md
+git commit -m "docs: registra conclusão da etapa 1 e convenção de commits em português"
 ```
 
 ### Etapa 2 — Banco, modelos, migrações e infraestrutura de testes
 
-Status: pendente
+Status: **concluída** (20/10/2026) · Branch: `feat/database-models`
 
-- [ ] Engine/sessão SQLAlchemy (`pool_pre_ping`, `pool_recycle`, timeouts)
-- [ ] Models `User`, `Incident` (com `version_id_col`), `IncidentEvent`
-- [ ] Enums de categoria, criticidade e status
-- [ ] Alembic + migração inicial com índices
-- [ ] pytest + `conftest.py`: banco de teste MySQL isolado, limpeza entre testes, fixtures de analistas e tokens, factory de incidentes
-- [ ] `pytest-cov` configurado
+- [x] Engine/sessão SQLAlchemy (`pool_pre_ping`, `pool_recycle`, timeouts de conexão/leitura/escrita)
+- [x] Models `User`, `Incident` (com `version_id_col`), `IncidentEvent`
+- [x] Enums de categoria, criticidade, status e tipo de evento (`StrEnum`, gravados como ENUM nativo do MySQL)
+- [x] Alembic + migração inicial com índices; upgrade → downgrade → upgrade testado
+- [x] pytest + `conftest.py`: banco `logos_test` recriado pelas **migrações reais**, limpeza após cada teste, factories de analista e incidente
+- [x] `pytest-cov` configurado
+- [ ] Fixture de token JWT → movida para a Etapa 5 (depende da autenticação)
 
-Commits sugeridos:
+Decisões desta etapa:
+
+- **Datas em UTC com microssegundos** (`DATETIME(6)`): eventos no mesmo segundo ficam em ordem.
+- **Nomes de índices e constraints padronizados** (`naming_convention`): as migrações geram os mesmos nomes em qualquer ambiente.
+- **Testes rodam as migrações**, e não `create_all`: garantem que o esquema testado é o mesmo de produção.
+- **Limpeza com DELETE após cada teste**, e não rollback: os testes de concorrência usam várias conexões, que só enxergam dados confirmados.
+- A URL do banco do Alembic vem de `DATABASE_URL` (sem credencial duplicada no `alembic.ini`).
+- Migrações geradas passam pelo Ruff automaticamente (hook `module`, portável entre Windows e Linux).
+
+Problema encontrado e corrigido:
+
+- O downgrade autogerado falhava no MySQL (erro 1553: índice que sustenta chave estrangeira não pode ser removido antes dela). Corrigido removendo as tabelas diretamente. O teste de ida e volta da migração serviu justamente para pegar isso.
+
+Verificação:
+
+- `ruff check` e `ruff format --check`: sem erros.
+- `pytest --cov`: **7 passaram**, cobertura 97% (só falta o `get_db`, usado a partir da Etapa 4).
+- Destaque: `test_stale_write_is_rejected` comprova no MySQL real que, quando dois analistas editam o mesmo incidente, a segunda gravação (com versão antiga) é recusada. É a base do 409 da Etapa 6.
+- O banco de desenvolvimento (`logos`) não é tocado pelos testes.
+
+Commits sugeridos (um comando por linha no terminal):
 
 ```bash
-git commit -m "feat(backend): adiciona sessão do banco e models SQLAlchemy"
-git commit -m "feat(backend): adiciona migração inicial do Alembic para usuários e incidentes"
-git commit -m "test(backend): configura pytest com banco MySQL de teste isolado e fixtures"
+git add backend/app/db backend/app/models backend/requirements.txt && git commit -m "feat(backend): adiciona sessão do banco e models SQLAlchemy"
+
+git add backend/alembic.ini backend/alembic && git commit -m "feat(backend): adiciona migração inicial do Alembic para usuários e incidentes"
+
+git add backend/tests backend/requirements-dev.txt backend/pyproject.toml && git commit -m "test(backend): configura pytest com banco MySQL de teste isolado e fixtures"
+
+git add progress.md && git commit -m "docs: registra conclusão da etapa 2"
 ```
 
 ### Etapa 3 — Seed e simulador
 
-Status: pendente
+Status: **concluída** (20/10/2026) · Branch: `feat/database-models`
 
-- [ ] `scripts/seed.py`: 3 analistas + ~100 incidentes realistas (BRs, km, cidades, placas Mercosul)
-- [ ] `scripts/simulate_trucks.py`: cria incidentes a cada N segundos (para a demo)
+- [x] `scripts/fake_data.py`: gerador de incidentes realistas (20 trechos de rodovias reais, placas Mercosul, títulos/descrições por categoria, criticidade proporcional à categoria). Reaproveitável pelo simulador.
+- [x] `scripts/seed.py`: 3 analistas demo + 100 incidentes com histórico coerente (abertos sem responsável; em investigação com claim; fechados/inconclusivos com nota de resolução)
+- [x] `app/core/security.py`: hash bcrypt de senha (adiantado da Etapa 5; o seed precisa gravar senhas reais)
+- [x] Relacionamento `Incident.events` ↔ `IncidentEvent.incident` (sem mudança no esquema, sem migração)
+- [ ] `scripts/simulate_trucks.py` → **movido para a Etapa 5**: vai enviar incidentes pela API, que só existe depois do CRUD e da autenticação
 
-Commit sugerido:
+Credenciais demo: `ana@logos.demo`, `bruno@logos.demo`, `carla@logos.demo`, senha `logos2026`.
+
+Decisões desta etapa:
+
+- **Analistas mantidos, incidentes recriados** a cada execução: dá para rodar o seed de novo antes da demo sem duplicar usuários.
+- **Seed bloqueado em produção** sem `--allow-production`, para não apagar dados reais por engano.
+- **Gerador recebe `random.Random`**: os testes usam semente fixa e geram sempre os mesmos dados.
+
+Verificação:
+
+- `pytest --cov`: **15 passaram**, cobertura 95% (só o `main()` da linha de comando fica de fora, verificado manualmente).
+- `python -m scripts.seed` no banco de dev: 57 abertos (nenhum com responsável), 22 em investigação, 16 fechados e 5 inconclusivos (todos com responsável), 164 eventos. Acentos gravados corretamente em UTF-8.
+
+Commits sugeridos (um comando por linha):
 
 ```bash
-git commit -m "feat(backend): adiciona script de seed e simulador de incidentes dos caminhões"
+git add backend/app/core/security.py backend/requirements.txt backend/tests/test_security.py && git commit -m "feat(backend): adiciona hash de senha com bcrypt"
+
+git add backend/app/models && git commit -m "feat(backend): relaciona incidentes ao seu histórico de eventos"
+
+git add backend/scripts backend/tests/test_seed.py backend/pyproject.toml && git commit -m "feat(backend): adiciona seed com analistas demo e 100 incidentes realistas"
+
+git add progress.md && git commit -m "docs: registra conclusão da etapa 3"
 ```
 
 ### Etapa 4 — CRUD, filtros e validação
 
-Status: pendente
+Status: **concluída** (20/10/2026) · Branch: `feat/incidents-crud`
 
-- [ ] Schemas Pydantic de entrada e saída (validação estrita, `extra="forbid"`)
-- [ ] `GET /api/incidents` com filtros múltiplos, busca, paginação e ordenação por prioridade
-- [ ] `GET /api/incidents/summary`
-- [ ] `GET/POST/PATCH/DELETE` (soft delete)
-- [ ] Handler de erros com formato padronizado
-- [ ] **Testes:** V1–V4 (validação) · F1–F5 (filtros, ordem de prioridade, summary)
+- [x] Schemas Pydantic de entrada e saída (validação estrita, `extra="forbid"`, normalização de placa/rodovia/UF, datas convertidas para UTC)
+- [x] `GET /api/incidents` com filtros múltiplos, busca, paginação e ordenação por prioridade feita no banco
+- [x] `GET /api/incidents/summary`
+- [x] `GET/POST/PATCH/DELETE` (soft delete); PATCH e DELETE exigem `version`
+- [x] Handler de erros com formato padronizado (validação, 404/405, conflito e 500 sem detalhes internos)
+- [x] **Testes:** V1–V4 · F1–F5 · **C2 e C5 adiantados da Etapa 6** (PATCH/DELETE já exigem versão)
 
-Commits sugeridos:
+Decisões desta etapa:
+
+- **Filtros como modelo Pydantic na query string:** parâmetro desconhecido (ex.: `?statuz=`) gera 422 em vez de ser ignorado em silêncio.
+- **Filtro padrão = Aberto + Em Investigação** (gestão por exceção). Fechados só aparecem quando pedidos.
+- **Ordenação por prioridade com `CASE` no SQL**, e não em Python: funciona com paginação e escala com o volume.
+- **PATCH não muda status:** status só muda pelas ações de ciclo de vida (Etapa 6), que têm regras próprias. Campos desconhecidos como `status` ou `assigned_to_id` são recusados.
+- **Duas barreiras de concorrência:** (1) a versão enviada pelo cliente é comparada com a atual; (2) se outra gravação ocorrer entre a leitura e o commit, o `StaleDataError` vira 409. As duas devolvem o estado atual em `error.details.current`, para o front atualizar a tela sem nova requisição.
+- **Busca com `autoescape`:** `%` e `_` digitados são texto, não curinga.
+- **Placa:** aceita o formato antigo (ABC1234) e o Mercosul (ABC1D23), com hífen ou espaço.
+
+Verificação:
+
+- `ruff check` / `ruff format`: sem erros.
+- `pytest --cov`: **95 passaram**, cobertura **98%**.
+- API rodando contra o banco de dev com o seed: os 5 primeiros da lista são Aberto + Alta + Acidente com Vítimas, do mais antigo para o mais recente; o summary bate com o seed; os erros saem no formato padrão.
+
+Commits sugeridos (um comando por linha, a partir da raiz):
 
 ```bash
-git commit -m "feat(backend): adiciona schemas de incidente com validação estrita"
-git commit -m "feat(backend): implementa CRUD de incidentes com ordenação por prioridade e filtros"
-git commit -m "feat(backend): adiciona endpoint de resumo dos incidentes"
-git commit -m "feat(backend): padroniza respostas de erro com handlers globais de exceção"
-git commit -m "test(backend): cobre validação de entrada, filtros e ordenação por prioridade"
+git add backend/app/core/errors.py backend/app/schemas/errors.py && git commit -m "feat(backend): padroniza respostas de erro com handlers globais de exceção"
+
+git add backend/app/schemas/incident.py && git commit -m "feat(backend): adiciona schemas de incidente com validação estrita"
+
+git add backend/app/services backend/app/api backend/app/main.py && git commit -m "feat(backend): implementa CRUD de incidentes com ordenação por prioridade, filtros e resumo"
+
+git add backend/tests && git commit -m "test(backend): cobre validação, filtros, ordem de prioridade e conflitos de versão"
+
+git add progress.md PRD.md README.md && git commit -m "docs: registra conclusão da etapa 4"
 ```
 
 ### Etapa 5 — Autenticação
 
 Status: pendente
 
-- [ ] Hash bcrypt, emissão e validação de JWT
+- [x] Hash bcrypt (adiantado na Etapa 3)
+- [ ] Emissão e validação de JWT
 - [ ] `POST /api/auth/login` (com rate limit) e `GET /api/auth/me`
 - [ ] Rotas de incidentes protegidas
 - [ ] CORS configurado por variável de ambiente
+- [ ] Fixtures de teste: analista autenticado e header com token (vindo da Etapa 2)
+- [ ] `scripts/simulate_trucks.py` (vindo da Etapa 3): faz login e envia incidentes pela API a cada N segundos, reaproveitando `scripts/fake_data.py`
 - [ ] **Testes:** S1–S4
 
 Commits sugeridos:
@@ -191,7 +288,7 @@ Status: pendente
 - [ ] Registro em `incident_events` + `GET /api/incidents/{id}/events`
 - [ ] `Idempotency-Key` no POST
 - [ ] Retry com backoff (`tenacity`) em falha transitória; 503 quando o banco está fora
-- [ ] **Testes de concorrência:** C1 (10 threads → 1 vencedor) · C2–C6
+- [ ] **Testes de concorrência:** C1 (10 threads → 1 vencedor) · C3, C4, C6 (C2 e C5 já feitos na Etapa 4)
 - [ ] **Testes de ciclo de vida:** L1 (transições válidas) · L2 (todas as inválidas, geradas automaticamente) · L3
 - [ ] **Testes de resiliência:** R1–R3
 

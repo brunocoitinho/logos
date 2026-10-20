@@ -1,0 +1,7 @@
+# Normaliza finais de linha para LF no repositório.
+# Scripts com CRLF quebram dentro de containers Linux.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary
