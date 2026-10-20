@@ -479,10 +479,19 @@ Status: **em andamento** · Branch: `ci/backend-pipeline`
 - [x] Cenário do CI simulado localmente (MySQL novo, banco criado pelo serviço): 208 testes, cobertura 96%
 - [x] Chave SSH exclusiva do deploy gerada (`~/.ssh/logos_deploy`); host key da VPS conferida com a já conhecida
 - [x] Badge do CI no README
-- [ ] Chave pública na VPS, restrita ao deploy (`restrict,command=...`)
+- [x] Chave pública na VPS, restrita ao deploy (`restrict,command=...`)
 - [ ] Secrets no GitHub: `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS`
-- [ ] VPS seguindo a `main`
-- [ ] Primeiro deploy automático confirmado
+- [x] VPS seguindo a `main` (`main...origin/main`, no commit do release do PR #9)
+- [ ] Primeiro deploy automático confirmado (no próximo PR de release)
+
+Testes da chave restrita (feitos da máquina local contra a VPS):
+
+| Teste | Resultado |
+|---|---|
+| Autenticação com a chave do deploy | ✅ |
+| Comando injetado (`echo ...; cat /etc/shadow`) | ✅ ignorado; rodou só o `deploy.sh`, nenhuma linha do comando na saída |
+| Terminal interativo (`-tt`) | ✅ negado (`PTY allocation request failed`) |
+| Túnel para o MySQL (`-L`) | ✅ negado pelo servidor (`administratively prohibited`) |
 
 Decisões:
 
