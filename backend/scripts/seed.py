@@ -33,6 +33,10 @@ DEMO_ANALYSTS = [
     ("Carla Mendes", "carla@logos.demo"),
 ]
 
+# Conta usada pela integração dos caminhões (simulador). Não é um analista: no histórico,
+# os incidentes aparecem como enviados pela telemetria, e não por uma pessoa.
+FLEET_ACCOUNT = ("Telemetria da Frota", "frota@logos.demo")
+
 # A maioria aberta: é o cenário de pressão que a tela precisa resolver.
 STATUS_WEIGHTS: dict[IncidentStatus, int] = {
     IncidentStatus.OPEN: 60,
@@ -68,20 +72,20 @@ def ensure_seed_allowed(environment: str, allow_production: bool) -> None:
         sys.exit("Seed bloqueado em produção. Use --allow-production se for intencional.")
 
 
-def upsert_analysts(db: Session) -> list[User]:
-    analysts = []
-    for name, email in DEMO_ANALYSTS:
-        user = db.scalar(select(User).where(User.email == email))
-        if user is None:
-            user = User(name=name, email=email, password_hash=hash_password(DEMO_PASSWORD))
-            db.add(user)
-        analysts.append(user)
-    db.flush()
-    return analysts
+def upsert_user(db: Session, name: str, email: str) -> User:
+    user = db.scalar(select(User).where(User.email == email))
+    if user is None:
+        user = User(name=name, email=email, password_hash=hash_password(DEMO_PASSWORD))
+        db.add(user)
+    return user
 
 
 def build_incident(
-    rng: random.Random, now: datetime, status: IncidentStatus, analysts: list[User]
+    rng: random.Random,
+    now: datetime,
+    status: IncidentStatus,
+    analysts: list[User],
+    fleet: User,
 ) -> tuple[Incident, list[IncidentEvent]]:
     if status == IncidentStatus.OPEN:
         reported_at = minutes_ago(now, rng, 1, 360)
@@ -91,8 +95,15 @@ def build_incident(
         reported_at = minutes_ago(now, rng, 120, 48 * 60)
 
     incident = Incident(**generate_incident_data(rng, reported_at), status=status)
-    # Incidente chega do caminhão: evento sem usuário.
-    events = [IncidentEvent(type=IncidentEventType.CREATED, created_at=reported_at)]
+    # Incidente chega pela telemetria do caminhão.
+    events = [
+        IncidentEvent(
+            type=IncidentEventType.CREATED,
+            user=fleet,
+            to_status=IncidentStatus.OPEN,
+            created_at=reported_at,
+        )
+    ]
 
     if status == IncidentStatus.OPEN:
         return incident, events
@@ -138,7 +149,9 @@ def seed(
     rng = rng or random.Random()
     now = now or utc_now()
 
-    analysts = upsert_analysts(db)
+    analysts = [upsert_user(db, name, email) for name, email in DEMO_ANALYSTS]
+    fleet = upsert_user(db, *FLEET_ACCOUNT)
+    db.flush()
 
     db.execute(delete(IncidentEvent))
     db.execute(delete(Incident))
@@ -147,7 +160,7 @@ def seed(
     weights = list(STATUS_WEIGHTS.values())
     for _ in range(incident_count):
         status = rng.choices(statuses, weights=weights)[0]
-        incident, events = build_incident(rng, now, status, analysts)
+        incident, events = build_incident(rng, now, status, analysts, fleet)
         incident.events = events
         db.add(incident)
 

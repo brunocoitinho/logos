@@ -21,10 +21,34 @@ class AppError(Exception):
     status_code = 400
     code = "BAD_REQUEST"
 
-    def __init__(self, message: str, details: dict[str, Any] | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        details: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> None:
         super().__init__(message)
         self.message = message
         self.details = details
+        self.headers = headers
+
+
+class UnauthorizedError(AppError):
+    status_code = 401
+    code = "UNAUTHORIZED"
+
+    def __init__(self, message: str = "Sessão inválida ou expirada. Faça login novamente.") -> None:
+        super().__init__(message, headers={"WWW-Authenticate": "Bearer"})
+
+
+class ForbiddenError(AppError):
+    status_code = 403
+    code = "FORBIDDEN"
+
+
+class TooManyRequestsError(AppError):
+    status_code = 429
+    code = "TOO_MANY_REQUESTS"
 
 
 class NotFoundError(AppError):
@@ -38,12 +62,16 @@ class ConflictError(AppError):
 
 
 def error_response(
-    status_code: int, code: str, message: str, details: Any | None = None
+    status_code: int,
+    code: str,
+    message: str,
+    details: Any | None = None,
+    headers: dict[str, str] | None = None,
 ) -> JSONResponse:
     body: dict[str, Any] = {"code": code, "message": message}
     if details is not None:
         body["details"] = details
-    return JSONResponse(status_code=status_code, content={"error": body})
+    return JSONResponse(status_code=status_code, content={"error": body}, headers=headers)
 
 
 HTTP_ERROR_CODES = {
@@ -56,7 +84,7 @@ HTTP_ERROR_CODES = {
 
 
 async def handle_app_error(request: Request, exc: AppError) -> JSONResponse:
-    return error_response(exc.status_code, exc.code, exc.message, exc.details)
+    return error_response(exc.status_code, exc.code, exc.message, exc.details, exc.headers)
 
 
 async def handle_validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:

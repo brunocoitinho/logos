@@ -171,7 +171,7 @@ flowchart LR
 | Validação | **Pydantic v2** | Enums, limites de tamanho, tipos estritos, mensagens padronizadas |
 | Auth | **JWT** (PyJWT) + **bcrypt** | Stateless, simples de demonstrar |
 | Resiliência | `pool_pre_ping`, `pool_recycle`, timeouts, retry com backoff (`tenacity`) em falhas transitórias de conexão | Lidar com lentidão/queda do banco |
-| Rate limit | `slowapi` no login | Segurança básica contra força bruta |
+| Rate limit | Limitador próprio em memória no login (5 falhas / 5 min por IP + e-mail) | Segurança básica contra força bruta; ~40 linhas, sem dependência. Com várias instâncias, migraria para Redis |
 | Testes | **pytest** + `httpx` TestClient | Incluindo teste de concorrência (dois claims → um 409) |
 | Qualidade | **Ruff** (lint + format) | Rápido, padrão atual |
 
@@ -354,7 +354,7 @@ O que ele entrega e qual requisito do case cada recurso atende:
 - Senhas com bcrypt; JWT com expiração (8 h) e segredo via variável de ambiente.
 - Todas as rotas de incidentes exigem token.
 - CORS restrito ao domínio da Vercel (e localhost em dev).
-- Rate limit no login.
+- Rate limit no login (429 com `Retry-After`); mensagem e tempo de resposta iguais para e-mail inexistente e senha errada.
 - Validação estrita de entrada (Pydantic): tamanho máximo, enums, regex de placa e UF; campos extras rejeitados.
 - ORM com parâmetros, sem SQL concatenado (proteção contra SQL injection).
 - Erros internos nunca vazam stack trace para o cliente.
