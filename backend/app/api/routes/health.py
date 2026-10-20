@@ -30,3 +30,11 @@ def health_check(response: Response, db: DbDep, settings: SettingsDep) -> Health
         database=database,
         environment=settings.environment,
     )
+
+
+# Monitores de uptime (ex.: UptimeRobot) usam HEAD por padrão; sem esta rota, a API
+# respondia 405 e o monitor a marcaria como fora do ar mesmo funcionando.
+# Fora do Swagger para não duplicar a operação documentada.
+@router.head("/health", include_in_schema=False)
+def health_check_head(response: Response, db: DbDep, settings: SettingsDep) -> HealthResponse:
+    return health_check(response, db, settings)
