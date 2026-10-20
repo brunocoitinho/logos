@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Enum, ForeignKey, Index, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -6,6 +7,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, PreciseDateTime, enum_values, utc_now
 from app.models.enums import IncidentEventType, IncidentStatus
 from app.models.user import User
+
+if TYPE_CHECKING:
+    from app.models.incident import Incident
 
 
 class IncidentEvent(Base):
@@ -30,6 +34,7 @@ class IncidentEvent(Base):
     created_at: Mapped[datetime] = mapped_column(PreciseDateTime, default=utc_now)
 
     user: Mapped[User | None] = relationship(lazy="joined")
+    incident: Mapped["Incident"] = relationship(back_populates="events")
 
     __table_args__ = (
         Index("ix_incident_events_incident_id_created_at", "incident_id", "created_at"),

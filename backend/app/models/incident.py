@@ -1,5 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Enum, ForeignKey, Index, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -7,6 +8,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, PreciseDateTime, enum_values, utc_now
 from app.models.enums import Criticality, IncidentCategory, IncidentStatus
 from app.models.user import User
+
+if TYPE_CHECKING:
+    from app.models.incident_event import IncidentEvent
 
 
 class Incident(Base):
@@ -48,6 +52,13 @@ class Incident(Base):
     deleted_at: Mapped[datetime | None] = mapped_column(PreciseDateTime)
 
     assigned_to: Mapped[User | None] = relationship(lazy="joined")
+    events: Mapped[list["IncidentEvent"]] = relationship(
+        back_populates="incident",
+        order_by="IncidentEvent.created_at",
+        cascade="all, delete-orphan",
+        # O banco já apaga os eventos (ON DELETE CASCADE); o SQLAlchemy não precisa carregá-los.
+        passive_deletes=True,
+    )
 
     __mapper_args__ = {"version_id_col": version}
 
