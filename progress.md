@@ -259,23 +259,49 @@ git add progress.md PRD.md README.md && git commit -m "docs: registra conclusão
 
 ### Etapa 5 — Autenticação
 
-Status: pendente
+Status: **concluída** (20/10/2026) · Branch: `feat/auth`
 
-- [x] Hash bcrypt (adiantado na Etapa 3)
-- [ ] Emissão e validação de JWT
-- [ ] `POST /api/auth/login` (com rate limit) e `GET /api/auth/me`
-- [ ] Rotas de incidentes protegidas
-- [ ] CORS configurado por variável de ambiente
-- [ ] Fixtures de teste: analista autenticado e header com token (vindo da Etapa 2)
-- [ ] `scripts/simulate_trucks.py` (vindo da Etapa 3): faz login e envia incidentes pela API a cada N segundos, reaproveitando `scripts/fake_data.py`
-- [ ] **Testes:** S1–S4
+- [x] Hash bcrypt (adiantado na Etapa 3); custo configurável (12 em produção, 4 nos testes)
+- [x] Emissão e validação de JWT (HS256, 8 h = um turno); segredo obrigatório (32+ caracteres) em produção
+- [x] `POST /api/auth/login` (com rate limit) e `GET /api/auth/me`
+- [x] Rotas de incidentes protegidas; eventos gravam o analista que agiu
+- [x] CORS configurado por variável de ambiente (já existia desde a Etapa 1; agora testado)
+- [x] Fixtures de teste: `client` autenticado por padrão e `anonymous_client`
+- [x] `scripts/simulate_trucks.py` (vindo da Etapa 3) + conta "Telemetria da Frota" no seed
+- [x] **Testes:** S1–S4
 
-Commits sugeridos:
+Decisões desta etapa:
+
+- **Login com JSON + token Bearer.** O Swagger ganhou o botão "Authorize".
+- **Login inválido sem pistas:** mesma mensagem e mesmo tempo de resposta para e-mail inexistente e senha errada (bcrypt roda contra um hash fictício).
+- **Rate limit próprio em memória** (5 falhas em 5 min por IP + e-mail → 429 com `Retry-After`), no lugar do `slowapi`: poucas linhas, sem dependência, fácil de explicar. Limitação registrada: com várias instâncias da API, o contador iria para o Redis. Durante o bloqueio, nem a senha certa passa.
+- **Token de usuário removido é recusado:** a cada requisição, o usuário do token é buscado no banco.
+- **Simulador como conta própria** ("Telemetria da Frota"): no histórico, o incidente aparece como enviado pela telemetria, e não por um analista. O seed também passou a registrar a criação em nome dela.
+- **Simulador resiliente:** API fora do ar → tenta de novo; token expirado → novo login; credencial recusada → para (em vez de entrar em loop).
+
+Problema encontrado e corrigido:
+
+- O simulador demorava ~2,5 s por envio. Causa: no Windows, `localhost` tenta IPv6 primeiro e espera ~2 s antes de cair para o IPv4 do uvicorn (medido: 2,04 s contra 0,00 s com `127.0.0.1`). O padrão do simulador passou a ser `http://127.0.0.1:8000`.
+
+Verificação:
+
+- `pytest --cov`: **134 passaram**, cobertura 95% (o que falta é o cliente HTTP real do simulador e o `main()` dos scripts, verificados manualmente).
+- Ponta a ponta com a API rodando: simulador criou 3 incidentes; com senha errada, parou com mensagem e código de saída 1; sem token → 401 com `WWW-Authenticate: Bearer`; 6ª tentativa de login errada → 429 com `Retry-After: 298`.
+
+Credenciais da telemetria: `frota@logos.demo` / `logos2026`.
+
+Commits sugeridos (um comando por linha, a partir da raiz):
 
 ```bash
-git commit -m "feat(backend): adiciona autenticação JWT e protege as rotas de incidentes"
-git commit -m "feat(backend): limita tentativas de login e configura CORS"
-git commit -m "test(backend): cobre autenticação, limite de tentativas e CORS"
+git add backend/app/core/config.py backend/app/core/security.py backend/app/core/errors.py backend/requirements.txt && git commit -m "feat(backend): adiciona emissão e validação de tokens JWT"
+
+git add backend/app/core/rate_limit.py backend/app/schemas/auth.py backend/app/services/auth.py backend/app/api backend/app/main.py backend/tests/conftest.py backend/tests/factories.py && git commit -m "feat(backend): adiciona login com limite de tentativas e protege as rotas de incidentes"
+
+git add backend/scripts backend/tests/test_seed.py backend/tests/test_simulator.py && git commit -m "feat(backend): adiciona conta da telemetria e simulador de caminhões"
+
+git add backend/tests/test_auth.py && git commit -m "test(backend): cobre autenticação, limite de tentativas e CORS"
+
+git add progress.md PRD.md && git commit -m "docs: registra conclusão da etapa 5"
 ```
 
 ### Etapa 6 — Ciclo de vida, concorrência e resiliência (núcleo do case)
@@ -326,6 +352,7 @@ Status: pendente
 - [ ] `backend/Dockerfile`
 - [ ] `infra/docker-compose.prod.yml` (api + mysql + caddy; MySQL sem porta exposta; `restart: unless-stopped`)
 - [ ] `infra/Caddyfile` com `api.<dominio>` (plano B: hostname `srvXXXXXX.hstgr.cloud`)
+- [ ] Uvicorn com `--proxy-headers --forwarded-allow-ips` (rede do Docker): atrás do Caddy, sem isso o rate limit do login veria todos os acessos com o IP do Caddy e bloquearia todo mundo junto
 - [ ] Rodar migração + seed em produção
 - [ ] Testar `https://api.<dominio>/api/health` e `/docs`
 - [ ] UptimeRobot no `/api/health`
@@ -484,6 +511,7 @@ Status: pendente
 - [ ] Publicar como **não listado** no YouTube; testar em aba anônima
 - [ ] Pasta pública (Google Drive) com um documento contendo os 3 links
 - [ ] Testar todos os links em aba anônima
+- [ ] Voltar o branch padrão do GitHub para `main` (Settings → General → Default branch)
 - [ ] Enviar pelo formulário da plataforma dentro do prazo
 
 ---
@@ -502,3 +530,4 @@ Status: pendente
 - Firewall `ufw` ativado com OpenSSH, 80 e 443.
 - Prazo confirmado: 21/10/2026 às 23h59. Cronograma refeito com ordem de corte (PRD §10.1).
 - Domínio: `logos-api.startbc.online` para a API (D6 atualizada). Registro A criado e já propagado.
+- PR #3 (Etapa 4) mergeado por engano na `main` em vez do `env/dev`. Corrigido com um novo PR do mesmo branch para o `env/dev`, sem revert nem force push: as duas branches ficam com o mesmo código e os próximos PRs `env/dev` → `main` seguem sem conflito. Prevenção: branch padrão do GitHub trocado para `env/dev` durante o desenvolvimento.
