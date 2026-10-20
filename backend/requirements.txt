@@ -1,3 +1,8 @@
 fastapi==0.154.0
 uvicorn[standard]==0.54.0
 pydantic-settings==2.16.1
+sqlalchemy==2.1.5
+pymysql==1.2.3
+# Necessário para o PyMySQL autenticar no MySQL 8 (caching_sha2_password)
+cryptography==50.0.2
+alembic==1.20.0
