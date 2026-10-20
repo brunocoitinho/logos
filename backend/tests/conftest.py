@@ -9,7 +9,7 @@ os.environ["DATABASE_URL"] = os.environ.get(
 # Custo mínimo do bcrypt nos testes: a segurança do hash não é o que está sendo testado.
 os.environ["BCRYPT_ROUNDS"] = "4"
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
@@ -90,3 +90,13 @@ def client(analyst: User) -> TestClient:
 @pytest.fixture
 def anonymous_client() -> TestClient:
     return TestClient(app)
+
+
+@pytest.fixture
+def client_for() -> Callable[[User], TestClient]:
+    """Cria um cliente autenticado como outro usuário (ex.: um segundo analista)."""
+
+    def make(user: User) -> TestClient:
+        return TestClient(app, headers=auth_headers(user))
+
+    return make
