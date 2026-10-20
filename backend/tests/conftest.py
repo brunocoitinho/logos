@@ -6,6 +6,8 @@ os.environ["ENVIRONMENT"] = "test"
 os.environ["DATABASE_URL"] = os.environ.get(
     "TEST_DATABASE_URL", "mysql+pymysql://logos:logos@localhost:3307/logos_test"
 )
+# Custo mínimo do bcrypt nos testes: a segurança do hash não é o que está sendo testado.
+os.environ["BCRYPT_ROUNDS"] = "4"
 
 from collections.abc import Iterator
 from pathlib import Path
@@ -17,9 +19,13 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.core.rate_limit import login_rate_limiter
+from app.core.security import create_access_token
 from app.db.base import Base
 from app.db.session import SessionLocal, engine
 from app.main import app
+from app.models import User
+from tests.factories import TEST_PASSWORD, create_user
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 
@@ -54,6 +60,7 @@ def clean_tables() -> Iterator[None]:
     with engine.begin() as connection:
         for table in reversed(Base.metadata.sorted_tables):
             connection.execute(table.delete())
+    login_rate_limiter.reset()
 
 
 @pytest.fixture
@@ -66,5 +73,20 @@ def db() -> Iterator[Session]:
 
 
 @pytest.fixture
-def client() -> TestClient:
+def analyst(db: Session) -> User:
+    return create_user(db, name="Ana Souza", email="ana@logos.test", password=TEST_PASSWORD)
+
+
+def auth_headers(user: User) -> dict[str, str]:
+    return {"Authorization": f"Bearer {create_access_token(user.id)}"}
+
+
+@pytest.fixture
+def client(analyst: User) -> TestClient:
+    """Cliente já autenticado como um analista: a maioria dos testes não é sobre login."""
+    return TestClient(app, headers=auth_headers(analyst))
+
+
+@pytest.fixture
+def anonymous_client() -> TestClient:
     return TestClient(app)

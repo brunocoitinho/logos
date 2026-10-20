@@ -1,8 +1,8 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Path, Query, Response, status
+from fastapi import APIRouter, Depends, Path, Query, Response, status
 
-from app.api.deps import DbDep
+from app.api.deps import CurrentUser, DbDep, get_current_user
 from app.schemas.errors import ErrorResponse
 from app.schemas.incident import (
     IncidentCreate,
@@ -14,7 +14,15 @@ from app.schemas.incident import (
 )
 from app.services import incidents as incident_service
 
-router = APIRouter(prefix="/incidents", tags=["incidents"])
+UNAUTHORIZED = {401: {"model": ErrorResponse, "description": "Token ausente, inválido ou expirado"}}
+
+# Todas as rotas de incidentes exigem login.
+router = APIRouter(
+    prefix="/incidents",
+    tags=["incidents"],
+    dependencies=[Depends(get_current_user)],
+    responses=UNAUTHORIZED,
+)
 
 IncidentId = Annotated[int, Path(ge=1)]
 
@@ -52,13 +60,17 @@ def get_incident(incident_id: IncidentId, db: DbDep) -> IncidentRead:
 
 
 @router.post("", response_model=IncidentRead, status_code=status.HTTP_201_CREATED)
-def create_incident(data: IncidentCreate, db: DbDep) -> IncidentRead:
-    return IncidentRead.model_validate(incident_service.create_incident(db, data))
+def create_incident(data: IncidentCreate, db: DbDep, current_user: CurrentUser) -> IncidentRead:
+    incident = incident_service.create_incident(db, data, user_id=current_user.id)
+    return IncidentRead.model_validate(incident)
 
 
 @router.patch("/{incident_id}", response_model=IncidentRead, responses={**NOT_FOUND, **CONFLICT})
-def update_incident(incident_id: IncidentId, data: IncidentUpdate, db: DbDep) -> IncidentRead:
-    return IncidentRead.model_validate(incident_service.update_incident(db, incident_id, data))
+def update_incident(
+    incident_id: IncidentId, data: IncidentUpdate, db: DbDep, current_user: CurrentUser
+) -> IncidentRead:
+    incident = incident_service.update_incident(db, incident_id, data, user_id=current_user.id)
+    return IncidentRead.model_validate(incident)
 
 
 @router.delete(
@@ -70,6 +82,7 @@ def delete_incident(
     incident_id: IncidentId,
     version: Annotated[int, Query(ge=1, description="Versão que o cliente leu")],
     db: DbDep,
+    current_user: CurrentUser,
 ) -> Response:
-    incident_service.delete_incident(db, incident_id, version)
+    incident_service.delete_incident(db, incident_id, version, user_id=current_user.id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
