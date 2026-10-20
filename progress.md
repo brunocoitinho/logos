@@ -470,7 +470,7 @@ git add progress.md && git commit -m "docs: registra deploy da API em produção
 
 ### Etapa 8.1 — CI/CD do backend (antecipada)
 
-Status: **em andamento** · Branch: `ci/backend-pipeline`
+Status: **concluída** (20/10/2026) · Branch: `ci/backend-pipeline` · PRs #10 (env/dev) e #11 (release 1.1)
 
 - [x] `.github/workflows/backend.yml`: job `test` (Ruff + pytest contra MySQL real, cobertura mínima de 90%) em todo PR que mexe em `backend/` ou `infra/`
 - [x] Job `deploy` só em push na `main` e só se `test` passar: SSH na VPS → `deploy.sh` → confere `/api/health`
@@ -480,9 +480,9 @@ Status: **em andamento** · Branch: `ci/backend-pipeline`
 - [x] Chave SSH exclusiva do deploy gerada (`~/.ssh/logos_deploy`); host key da VPS conferida com a já conhecida
 - [x] Badge do CI no README
 - [x] Chave pública na VPS, restrita ao deploy (`restrict,command=...`)
-- [ ] Secrets no GitHub: `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS`
+- [x] Secrets no GitHub: `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS`
 - [x] VPS seguindo a `main` (`main...origin/main`, no commit do release do PR #9)
-- [ ] Primeiro deploy automático confirmado (no próximo PR de release)
+- [x] Primeiro deploy automático confirmado: merge do PR #11 na `main` → testes ✅ → deploy ✅ → produção saudável. GitHub, VPS e deployment `production` no mesmo commit (`5b63feb`)
 
 Testes da chave restrita (feitos da máquina local contra a VPS):
 
