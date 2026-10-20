@@ -8,19 +8,21 @@ from itertools import count
 
 from sqlalchemy.orm import Session
 
+from app.core.security import hash_password
 from app.models import Incident, User
 from app.models.enums import Criticality, IncidentCategory, IncidentStatus
+
+TEST_PASSWORD = "senha-de-teste"
 
 _sequence = count(1)
 
 
-def create_user(db: Session, **overrides) -> User:
+def create_user(db: Session, password: str = TEST_PASSWORD, **overrides) -> User:
     number = next(_sequence)
     data = {
         "name": f"Analista {number}",
         "email": f"analista{number}@logos.test",
-        # Substituído por hash bcrypt real quando a autenticação for implementada.
-        "password_hash": "not-a-real-hash",
+        "password_hash": hash_password(password),
     }
     user = User(**(data | overrides))
     db.add(user)

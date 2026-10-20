@@ -259,82 +259,211 @@ git add progress.md PRD.md README.md && git commit -m "docs: registra conclusão
 
 ### Etapa 5 — Autenticação
 
-Status: pendente
+Status: **concluída** (20/10/2026) · Branch: `feat/auth`
 
-- [x] Hash bcrypt (adiantado na Etapa 3)
-- [ ] Emissão e validação de JWT
-- [ ] `POST /api/auth/login` (com rate limit) e `GET /api/auth/me`
-- [ ] Rotas de incidentes protegidas
-- [ ] CORS configurado por variável de ambiente
-- [ ] Fixtures de teste: analista autenticado e header com token (vindo da Etapa 2)
-- [ ] `scripts/simulate_trucks.py` (vindo da Etapa 3): faz login e envia incidentes pela API a cada N segundos, reaproveitando `scripts/fake_data.py`
-- [ ] **Testes:** S1–S4
+- [x] Hash bcrypt (adiantado na Etapa 3); custo configurável (12 em produção, 4 nos testes)
+- [x] Emissão e validação de JWT (HS256, 8 h = um turno); segredo obrigatório (32+ caracteres) em produção
+- [x] `POST /api/auth/login` (com rate limit) e `GET /api/auth/me`
+- [x] Rotas de incidentes protegidas; eventos gravam o analista que agiu
+- [x] CORS configurado por variável de ambiente (já existia desde a Etapa 1; agora testado)
+- [x] Fixtures de teste: `client` autenticado por padrão e `anonymous_client`
+- [x] `scripts/simulate_trucks.py` (vindo da Etapa 3) + conta "Telemetria da Frota" no seed
+- [x] **Testes:** S1–S4
 
-Commits sugeridos:
+Decisões desta etapa:
+
+- **Login com JSON + token Bearer.** O Swagger ganhou o botão "Authorize".
+- **Login inválido sem pistas:** mesma mensagem e mesmo tempo de resposta para e-mail inexistente e senha errada (bcrypt roda contra um hash fictício).
+- **Rate limit próprio em memória** (5 falhas em 5 min por IP + e-mail → 429 com `Retry-After`), no lugar do `slowapi`: poucas linhas, sem dependência, fácil de explicar. Limitação registrada: com várias instâncias da API, o contador iria para o Redis. Durante o bloqueio, nem a senha certa passa.
+- **Token de usuário removido é recusado:** a cada requisição, o usuário do token é buscado no banco.
+- **Simulador como conta própria** ("Telemetria da Frota"): no histórico, o incidente aparece como enviado pela telemetria, e não por um analista. O seed também passou a registrar a criação em nome dela.
+- **Simulador resiliente:** API fora do ar → tenta de novo; token expirado → novo login; credencial recusada → para (em vez de entrar em loop).
+
+Problema encontrado e corrigido:
+
+- O simulador demorava ~2,5 s por envio. Causa: no Windows, `localhost` tenta IPv6 primeiro e espera ~2 s antes de cair para o IPv4 do uvicorn (medido: 2,04 s contra 0,00 s com `127.0.0.1`). O padrão do simulador passou a ser `http://127.0.0.1:8000`.
+
+Verificação:
+
+- `pytest --cov`: **134 passaram**, cobertura 95% (o que falta é o cliente HTTP real do simulador e o `main()` dos scripts, verificados manualmente).
+- Ponta a ponta com a API rodando: simulador criou 3 incidentes; com senha errada, parou com mensagem e código de saída 1; sem token → 401 com `WWW-Authenticate: Bearer`; 6ª tentativa de login errada → 429 com `Retry-After: 298`.
+
+Credenciais da telemetria: `frota@logos.demo` / `logos2026`.
+
+Commits sugeridos (um comando por linha, a partir da raiz):
 
 ```bash
-git commit -m "feat(backend): adiciona autenticação JWT e protege as rotas de incidentes"
-git commit -m "feat(backend): limita tentativas de login e configura CORS"
-git commit -m "test(backend): cobre autenticação, limite de tentativas e CORS"
+git add backend/app/core/config.py backend/app/core/security.py backend/app/core/errors.py backend/requirements.txt && git commit -m "feat(backend): adiciona emissão e validação de tokens JWT"
+
+git add backend/app/core/rate_limit.py backend/app/schemas/auth.py backend/app/services/auth.py backend/app/api backend/app/main.py backend/tests/conftest.py backend/tests/factories.py && git commit -m "feat(backend): adiciona login com limite de tentativas e protege as rotas de incidentes"
+
+git add backend/scripts backend/tests/test_seed.py backend/tests/test_simulator.py && git commit -m "feat(backend): adiciona conta da telemetria e simulador de caminhões"
+
+git add backend/tests/test_auth.py && git commit -m "test(backend): cobre autenticação, limite de tentativas e CORS"
+
+git add progress.md PRD.md && git commit -m "docs: registra conclusão da etapa 5"
 ```
 
 ### Etapa 6 — Ciclo de vida, concorrência e resiliência (núcleo do case)
 
-Status: pendente
+Status: **concluída** (20/10/2026) · Branch: `feat/incident-lifecycle`
 
-- [ ] Serviço de transições (máquina de estados do PRD §4.2)
-- [ ] `claim` atômico, `release`, `transition` com `version`
-- [ ] 409 com estado atual e nome de quem agiu
-- [ ] Registro em `incident_events` + `GET /api/incidents/{id}/events`
-- [ ] `Idempotency-Key` no POST
-- [ ] Retry com backoff (`tenacity`) em falha transitória; 503 quando o banco está fora
-- [ ] **Testes de concorrência:** C1 (10 threads → 1 vencedor) · C3, C4, C6 (C2 e C5 já feitos na Etapa 4)
-- [ ] **Testes de ciclo de vida:** L1 (transições válidas) · L2 (todas as inválidas, geradas automaticamente) · L3
-- [ ] **Testes de resiliência:** R1–R3
+- [x] Máquina de estados do PRD §4.2 em `services/incident_lifecycle.py` (transições permitidas declaradas como dados)
+- [x] `claim` atômico (UPDATE condicional), `release` e `transition` com `version`
+- [x] 409 com estado atual e nome de quem agiu ("Ana Souza assumiu este incidente antes de você.")
+- [x] `GET /api/incidents/{id}/events` (histórico com o nome de quem agiu)
+- [x] `Idempotency-Key` no POST (nova coluna única + migração); o simulador reenvia com a mesma chave
+- [x] 3 tentativas de conexão com espera crescente; 503 quando o banco está fora; `/health` checa o banco
+- [x] **Testes de concorrência:** C1 (10 analistas → 1 vencedor, 3 rodadas), C3, C4, C6 (inclusive reenvios simultâneos) e edição simultânea
+- [x] **Testes de ciclo de vida:** L1, L2 (12 transições inválidas geradas automaticamente), L3
+- [x] **Testes de resiliência:** R1–R3
 
-Commits sugeridos:
+Decisões desta etapa:
+
+- **Claim sem `version`:** o lock é o próprio estado (`WHERE status = 'OPEN' AND assigned_to_id IS NULL`), checado e gravado num único UPDATE. Assim, uma edição no título não impede alguém de assumir.
+- **Duplo clique é seguro:** quem já é o responsável e clica de novo em Assumir recebe 200, sem novo evento.
+- **Ordem das checagens:** 404 → versão (409 com estado atual) → transição (422) → permissão (403). Com a tela desatualizada, o analista recebe o estado novo em vez de um erro confuso.
+- **Encerrar** (Fechado/Inconclusivo): só o responsável, com nota obrigatória (mín. 5 caracteres). **Reabrir:** qualquer analista, com motivo; o incidente volta para a fila sem responsável. Quem encerrou continua registrado.
+- **Mensagens que orientam:** tentar mudar para Em Investigação pela transição indica a ação Assumir; voltar para Aberto indica Liberar.
+- **Só a conexão é repetida automaticamente**, não os comandos SQL: repetir uma escrita poderia duplicá-la. Sem `tenacity`: um evento `do_connect` do SQLAlchemy com um laço simples.
+- **Idempotência:** 201 quando cria, 200 com `Idempotent-Replayed: true` quando é reenvio. Reenvios simultâneos são barrados pela restrição UNIQUE do banco.
+
+Prova de que o teste C1 é real (teste de mutação, feito fora do repositório):
+
+- Trocando, só durante o teste, o claim atômico por um "lê, confere e depois grava", **os 10 analistas venceram** (10 respostas 200). Com o UPDATE atômico: 1 vencedor e 9 conflitos. O teste C1 detecta a falha.
+- C1 rodou 5 vezes seguidas (15 rodadas de 10 analistas) sem nenhuma falha.
+
+Problema encontrado e corrigido:
+
+- Na verificação ao vivo, a API respondia com código antigo: um processo da Etapa 5 continuava ocupando a porta 8000. No Windows, o `python.exe` do `.venv` é um lançador que cria o Python real como processo filho; encerrar só o lançador deixou o filho órfão. Agora a API de teste é encerrada derrubando a árvore de processos.
+
+Verificação:
+
+- `pytest --cov`: **190 passaram**, cobertura **96%** (services e rotas entre 99% e 100%).
+- Ao vivo: health `{"status":"ok","database":"up"}`; Ana assume (v2); Bruno recebe 409 com o nome da Ana; Bruno tenta fechar → 403; Ana fecha (v3); histórico: CREATED (Telemetria da Frota) → CLAIMED → STATUS_CHANGED (Ana Souza).
+
+Commits sugeridos (um comando por linha, a partir da raiz):
 
 ```bash
-git commit -m "feat(backend): adiciona máquina de estados do status do incidente"
-git commit -m "test(backend): cobre transições de status válidas e inválidas"
-git commit -m "feat(backend): implementa claim atômico e optimistic locking com conflito 409"
-git commit -m "test(backend): comprova que claims simultâneos têm um único vencedor"
-git commit -m "feat(backend): registra histórico de eventos do incidente"
-git commit -m "feat(backend): suporta chave de idempotência na criação de incidentes"
-git commit -m "feat(backend): repete falhas transitórias do banco e retorna 503 quando indisponível"
-git commit -m "test(backend): cobre queda do banco e recuperação de falhas transitórias"
+git add backend/app/core/errors.py backend/app/db/session.py backend/app/schemas/health.py backend/app/api/routes/health.py && git commit -m "feat(backend): repete conexões com o banco, responde 503 quando indisponível e checa o banco no health"
+
+git add backend/app/models/incident.py backend/alembic/versions && git commit -m "feat(backend): adiciona chave de idempotência aos incidentes"
+
+git add backend/app/services/incidents.py backend/app/schemas/incident.py backend/app/services/incident_lifecycle.py backend/app/api/routes/incidents.py && git commit -m "feat(backend): implementa claim atômico, liberação, transições de status e histórico"
+
+git add backend/scripts/simulate_trucks.py backend/tests/test_simulator.py && git commit -m "feat(backend): reenvia incidentes do simulador com a mesma chave de idempotência"
+
+git add backend/tests && git commit -m "test(backend): comprova que claims simultâneos têm um único vencedor e cobre ciclo de vida e resiliência"
+
+git add progress.md PRD.md && git commit -m "docs: registra conclusão da etapa 6"
 ```
 
 ### Etapa 7 — Cobertura e robustez extra
 
-Status: pendente
+Status: **concluída** (20/10/2026) · Branch: `test/schemathesis`
 
-- [ ] Relatório de cobertura; completar até ≥ 90% em `services/` e `api/`
-- [ ] *(diferencial, se houver tempo)* V5: Schemathesis contra o OpenAPI, sem nenhuma resposta 500
+- [x] Relatório de cobertura; ≥ 90% em `services/` e `api/` (atingido na Etapa 6)
+- [x] V5: Schemathesis contra o OpenAPI, em todos os 13 endpoints
 
-Commits sugeridos:
+O que o teste verifica, para qualquer entrada gerada (textos enormes, tipos errados, valores fora dos limites, campos faltando):
+
+- nenhuma requisição causa erro 500 (`not_a_server_error`);
+- dado inválido é sempre recusado com 4xx (`negative_data_rejection`);
+- toda resposta segue o formato documentado no Swagger (`response_schema_conformance`).
+
+**Bug real encontrado pelo Schemathesis:**
+
+- `GET /api/incidents?offset=18446744073709551616` (2⁶⁴) → **erro 500**. O `offset` não tinha teto: o número passava pela validação, estourava o tipo do `OFFSET` no MySQL e virava erro de SQL. Nenhum teste manual tinha tentado um número desse tamanho.
+- Correção: `offset` ≤ 1.000.000; ids e versões ≤ 2.147.483.647 (maior valor de uma coluna `INT` do MySQL).
+- O caso virou teste de regressão em `test_incidents_list.py`.
+- Bom exemplo para o vídeo: o teste baseado em propriedades achou o que os testes escritos à mão não acharam.
+
+Decisões:
+
+- **40 exemplos por endpoint no dia a dia** (a suíte inteira roda em ~25 s). Rodada pesada sob demanda: `FUZZ_EXAMPLES=200 pytest tests/test_api_fuzzing.py` (cerca de 2.600 requisições, ~40 s). O bug só apareceu na rodada pesada, por isso ela vale antes de cada release.
+- Incidentes com ids 1, 2 e 3 criados antes do fuzzing: o gerador tende a usar ids baixos, então os endpoints de detalhe, edição e ciclo de vida são exercitados de verdade, e não só respondem 404.
+
+Verificação:
+
+- `pytest --cov`: **207 passaram**, cobertura 96%.
+- Rodada pesada (200 exemplos × 13 endpoints) depois da correção: 13 passaram.
+
+Commits sugeridos (um comando por linha, a partir da raiz):
 
 ```bash
-git commit -m "test(backend): eleva a cobertura de services e rotas acima de 90%"
-git commit -m "test(backend): adiciona testes baseados em propriedades com Schemathesis"
+git add backend/tests/test_api_fuzzing.py backend/requirements-dev.txt .gitignore && git commit -m "test(backend): adiciona testes baseados em propriedades com Schemathesis"
+
+git add backend/app/schemas/incident.py backend/app/api/routes/incidents.py backend/tests/test_incidents_list.py && git commit -m "fix(backend): limita offset, ids e versões para evitar erro 500 com números gigantes"
+
+git add progress.md && git commit -m "docs: registra conclusão da etapa 7"
 ```
 
 ### Etapa 8 — Deploy da API na VPS (walking skeleton)
 
-Status: pendente
+Status: **API em produção** em `https://logos-api.startbc.online` (20/10/2026) · Branch: `chore/deploy-api`
 
-- [ ] `backend/Dockerfile`
-- [ ] `infra/docker-compose.prod.yml` (api + mysql + caddy; MySQL sem porta exposta; `restart: unless-stopped`)
-- [ ] `infra/Caddyfile` com `api.<dominio>` (plano B: hostname `srvXXXXXX.hstgr.cloud`)
-- [ ] Rodar migração + seed em produção
-- [ ] Testar `https://api.<dominio>/api/health` e `/docs`
+- [x] `backend/Dockerfile` (Python 3.13 slim, usuário sem privilégios, migrações automáticas na subida) + `.dockerignore`
+- [x] `infra/docker-compose.prod.yml` (caddy + api + mysql; `restart: unless-stopped`; healthchecks)
+- [x] `infra/Caddyfile` com `{$API_DOMAIN}`, HTTPS automático e cabeçalhos de segurança
+- [x] Uvicorn com `--proxy-headers --forwarded-allow-ips='*'` (seguro porque a API não publica porta)
+- [x] `infra/.env.example` e `infra/deploy.sh` (atualização com um comando)
+- [x] Ubuntu da VPS atualizado (sem reboot necessário)
+- [x] Clonado em `/opt/logos` na VPS; segredos gerados no servidor (`openssl rand -hex 32`, `.env` com `chmod 600`)
+- [x] Stack no ar; certificado Let's Encrypt obtido pelo Caddy
+- [x] Seed em produção (`--allow-production`): 3 analistas + 100 incidentes
+- [x] `https://logos-api.startbc.online/api/health` e `/docs` verificados de fora
+- [x] `HEAD /api/health` corrigido (respondia 405; ver abaixo)
 - [ ] UptimeRobot no `/api/health`
+- [ ] PR para `env/dev` e PR de release `env/dev` → `main`; VPS passa a seguir a `main`
 
-Commits sugeridos:
+Decisões desta etapa:
+
+- **Só o Caddy publica portas para a internet** (80/443). A API não publica nenhuma; o MySQL fica em `127.0.0.1` da VPS, só para o DBeaver via túnel SSH. Isso contorna o fato de o Docker ignorar o ufw.
+- **Migrações rodam na subida do container** (`alembic upgrade head && uvicorn ...`): um deploy nunca sobe com o esquema desatualizado. Funciona porque há uma única instância.
+- **Um único processo uvicorn:** o limite de tentativas de login fica em memória.
+- **Segredos só na VPS**, gerados com `openssl rand -hex 32` no próprio servidor; o compose recusa subir se faltar algum (`${VAR:?}`).
+- **Projeto `logos-prod`** no compose de produção, diferente do `logos` do desenvolvimento, para nunca se misturarem.
+
+Validação local da stack de produção (com `API_DOMAIN=localhost`, que faz o Caddy usar certificado local):
+
+- HTTPS com HSTS e `nosniff`; HTTP → HTTPS (308).
+- `/api/health` → `{"status":"ok","database":"up","environment":"production"}`.
+- Seed recusado em produção sem a flag; com `--allow-production`, 100 incidentes.
+- Portas: só o Caddy publicado; API sem porta; MySQL só em `127.0.0.1`.
+- API roda como `appuser`, não como root.
+- **Proxy headers:** a API registra o IP do cliente (172.20.0.1), não o do Caddy (172.20.0.4). Um `X-Forwarded-For: 6.6.6.6` forjado pelo cliente foi ignorado: não dá para escapar do limite de login fingindo outro IP.
+
+Verificação em produção (de fora, como um avaliador):
+
+- Health: `{"status":"ok","database":"up","environment":"production"}`.
+- Certificado Let's Encrypt, **TLS 1.3**, válido até 18/01/2027 (o Caddy renova sozinho).
+- HSTS e `nosniff`; HTTP → HTTPS (308); Swagger 200; login demo funcionando; sem token → 401.
+- **Portas 3306, 3307, 8000 e 33060 fechadas para a internet** (testado com conexão TCP direta ao IP da VPS).
+- Lista com 100 incidentes: ~0,12 s no total (≈ 40 ms de processamento no servidor).
+
+Problemas encontrados e corrigidos:
+
+- `HEAD /api/health` respondia **405**. Monitores de uptime (ex.: UptimeRobot) usam HEAD por padrão e marcariam a API como fora do ar mesmo funcionando. Corrigido com uma rota HEAD própria (fora do Swagger, para não duplicar a operação documentada) + teste.
+- Na 1ª inicialização, a API falhava ao migrar ("Connection refused") e só subia depois de 2 reinícios. Causa: o MySQL inicia um "servidor temporário" (só socket, sem TCP) para criar usuários e bancos, e o healthcheck `mysqladmin ping -h localhost` usa o socket, então declarava o banco pronto cedo demais. Correção: `-h 127.0.0.1` força TCP. Testado do zero (volumes apagados): 0 reinícios e 0 erros. O compose de desenvolvimento tinha o mesmo defeito e também foi corrigido.
+
+Commits sugeridos (um comando por linha, a partir da raiz):
 
 ```bash
-git commit -m "chore(backend): adiciona Dockerfile de produção"
-git commit -m "chore(infra): adiciona compose de produção com proxy reverso Caddy e HTTPS"
+git add backend/Dockerfile backend/.dockerignore && git commit -m "chore(backend): adiciona Dockerfile de produção"
+
+git add infra/docker-compose.prod.yml infra/Caddyfile infra/.env.example infra/deploy.sh && git commit -m "chore(infra): adiciona compose de produção com proxy reverso Caddy e HTTPS"
+
+git add docker-compose.yml && git commit -m "fix: considera o MySQL saudável só quando aceita conexões TCP"
+
+git add progress.md && git commit -m "docs: registra validação local do deploy"
+```
+
+Depois do deploy na VPS:
+
+```bash
+git add backend/app/api/routes/health.py backend/tests/test_health.py && git commit -m "fix(backend): aceita HEAD no health check para monitores de uptime"
+
+git add progress.md && git commit -m "docs: registra deploy da API em produção"
 ```
 
 ---
@@ -484,6 +613,7 @@ Status: pendente
 - [ ] Publicar como **não listado** no YouTube; testar em aba anônima
 - [ ] Pasta pública (Google Drive) com um documento contendo os 3 links
 - [ ] Testar todos os links em aba anônima
+- [ ] Voltar o branch padrão do GitHub para `main` (Settings → General → Default branch)
 - [ ] Enviar pelo formulário da plataforma dentro do prazo
 
 ---
@@ -502,3 +632,4 @@ Status: pendente
 - Firewall `ufw` ativado com OpenSSH, 80 e 443.
 - Prazo confirmado: 21/10/2026 às 23h59. Cronograma refeito com ordem de corte (PRD §10.1).
 - Domínio: `logos-api.startbc.online` para a API (D6 atualizada). Registro A criado e já propagado.
+- PR #3 (Etapa 4) mergeado por engano na `main` em vez do `env/dev`. Corrigido com um novo PR do mesmo branch para o `env/dev`, sem revert nem force push: as duas branches ficam com o mesmo código e os próximos PRs `env/dev` → `main` seguem sem conflito. Prevenção: branch padrão do GitHub trocado para `env/dev` durante o desenvolvimento.

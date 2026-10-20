@@ -156,6 +156,9 @@ def test_summary_of_empty_database_is_all_zeros(client):
         {"limit": 201},
         {"limit": -5},
         {"offset": -1},
+        # Regressão: encontrado pelo Schemathesis; o offset 2^64 chegava ao MySQL e gerava 500.
+        {"offset": 18446744073709551616},
+        {"offset": 1_000_001},
         {"limit": "muitos"},
         {"criticality": "URGENTE"},
         {"statuz": "OPEN"},
@@ -217,7 +220,7 @@ def test_get_unknown_incident_returns_404(client):
     assert response.json()["error"]["code"] == "NOT_FOUND"
 
 
-@pytest.mark.parametrize("bad_id", ["abc", "0", "-1", "1.5"])
+@pytest.mark.parametrize("bad_id", ["abc", "0", "-1", "1.5", "2147483648", "18446744073709551616"])
 def test_get_with_invalid_id_returns_422(client, bad_id):
     response = client.get(f"/api/incidents/{bad_id}")
 

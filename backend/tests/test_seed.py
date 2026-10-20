@@ -9,7 +9,7 @@ from app.db.base import utc_now
 from app.models import Incident, IncidentEvent, User
 from app.models.enums import IncidentEventType, IncidentStatus
 from scripts.fake_data import generate_incident_data, generate_plate
-from scripts.seed import DEMO_PASSWORD, ensure_seed_allowed, seed
+from scripts.seed import DEMO_PASSWORD, FLEET_ACCOUNT, ensure_seed_allowed, seed
 
 MERCOSUL_PLATE = re.compile(r"^[A-Z]{3}\d[A-Z]\d{2}$")
 
@@ -38,9 +38,25 @@ def test_seed_creates_demo_analysts_and_incidents(db):
     assert result.incidents == 100
     assert db.scalar(select(func.count(Incident.id))) == 100
 
-    analysts = db.scalars(select(User)).all()
-    assert len(analysts) == 3
-    assert all(verify_password(DEMO_PASSWORD, analyst.password_hash) for analyst in analysts)
+    users = db.scalars(select(User)).all()
+    assert result.analysts == 3
+    assert sorted(user.email for user in users) == [
+        "ana@logos.demo",
+        "bruno@logos.demo",
+        "carla@logos.demo",
+        "frota@logos.demo",
+    ]
+    assert all(verify_password(DEMO_PASSWORD, user.password_hash) for user in users)
+
+
+def test_seed_incidents_arrive_from_fleet_telemetry(db):
+    seed(db, incident_count=20, rng=random.Random(1))
+
+    fleet = db.scalar(select(User).where(User.email == FLEET_ACCOUNT[1]))
+    creators = db.scalars(
+        select(IncidentEvent.user_id).where(IncidentEvent.type == IncidentEventType.CREATED)
+    ).all()
+    assert set(creators) == {fleet.id}
 
 
 def test_seed_lifecycle_data_is_consistent(db):
@@ -75,7 +91,7 @@ def test_seed_can_run_again_without_duplicating_analysts(db):
     created_events = select(func.count(IncidentEvent.id)).where(
         IncidentEvent.type == IncidentEventType.CREATED
     )
-    assert db.scalar(select(func.count(User.id))) == 3
+    assert db.scalar(select(func.count(User.id))) == 4
     assert db.scalar(select(func.count(Incident.id))) == 20
     assert db.scalar(created_events) == 20
 
