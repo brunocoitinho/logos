@@ -15,6 +15,7 @@ import random
 import time
 import urllib.error
 import urllib.request
+import uuid
 from collections.abc import Callable
 from datetime import datetime
 from decimal import Decimal
@@ -53,13 +54,22 @@ class ApiClient:
         response = self._request("POST", "/api/auth/login", {"email": email, "password": password})
         return response["access_token"]
 
-    def create_incident(self, token: str, payload: dict[str, Any]) -> dict[str, Any]:
-        return self._request("POST", "/api/incidents", payload, token)
+    def create_incident(
+        self, token: str, payload: dict[str, Any], idempotency_key: str
+    ) -> dict[str, Any]:
+        return self._request(
+            "POST", "/api/incidents", payload, token, {"Idempotency-Key": idempotency_key}
+        )
 
     def _request(
-        self, method: str, path: str, body: dict[str, Any], token: str | None = None
+        self,
+        method: str,
+        path: str,
+        body: dict[str, Any],
+        token: str | None = None,
+        extra_headers: dict[str, str] | None = None,
     ) -> dict[str, Any]:
-        headers = {"Content-Type": "application/json"}
+        headers = {"Content-Type": "application/json", **(extra_headers or {})}
         if token:
             headers["Authorization"] = f"Bearer {token}"
         request = urllib.request.Request(
@@ -85,12 +95,19 @@ def run(
     """Envia incidentes até atingir `count` (None = sem parar). Devolve quantos foram aceitos."""
     token: str | None = None
     sent = 0
+    # Incidente ainda não confirmado pela API. Em caso de falha, é reenviado com a MESMA
+    # chave: se a API chegou a gravar (e só a resposta se perdeu), não haverá duplicata.
+    pending: tuple[str, dict[str, Any]] | None = None
 
     while count is None or sent < count:
         try:
             if token is None:
                 token = _login(client, email, password)
-            incident = client.create_incident(token, build_payload(rng))
+            if pending is None:
+                pending = (uuid.uuid4().hex, build_payload(rng))
+            idempotency_key, payload = pending
+            incident = client.create_incident(token, payload, idempotency_key)
+            pending = None
             sent += 1
             log(
                 f"[{datetime.now():%H:%M:%S}] #{incident['id']} {incident['criticality']:<6} "
