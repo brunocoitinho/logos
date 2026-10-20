@@ -9,7 +9,7 @@
 
 - Uma etapa por vez; parar ao fim de cada etapa para revisão.
 - **Commits feitos pelo Bruno.** Ao fim de cada etapa: explicar o que foi feito e sugerir a mensagem de commit.
-- Commits pequenos, no padrão Conventional Commits (`feat`, `fix`, `chore`, `docs`, `test`, `refactor`, `ci`).
+- Commits pequenos, no padrão Conventional Commits: prefixo em inglês (`feat`, `fix`, `chore`, `docs`, `test`, `refactor`, `ci`) e **descrição em português**, no presente ("adiciona", "corrige", "cobre").
 - **Testes na mesma etapa da funcionalidade.** Uma etapa só é concluída com os testes dela passando.
 - Tecnologia nova (ex.: TanStack Query, MSW, Playwright) é explicada e justificada na documentação antes de usar.
 - Perguntar antes quando houver ambiguidade.
@@ -96,18 +96,44 @@ git commit -m "docs: adiciona PRD e acompanhamento de progresso do MVP Logos"
 
 ### Etapa 1 — Esqueleto do backend
 
-Status: pendente
+Status: **concluída** (20/10/2026) · Branch: `feat/backend-scaffold`
 
-- [ ] `backend/` com `pyproject.toml`, venv, FastAPI, Uvicorn, Ruff
-- [ ] `core/config.py` com pydantic-settings e `.env.example`
-- [ ] Rota `GET /api/health`
-- [ ] `docker-compose.yml` na raiz com MySQL para desenvolvimento e testes
+- [x] `backend/` com `pyproject.toml` (config do Ruff e do pytest), `requirements.txt` e `requirements-dev.txt` com versões fixas, `.venv` local
+- [x] `core/config.py` com pydantic-settings e `.env.example`
+- [x] Rota `GET /api/health` + teste
+- [x] `docker-compose.yml` na raiz com MySQL 8.4 na porta **3307** (a 3306 já é usada pelo MySQL local) e criação automática do banco `logos_test`
+- [x] `.gitattributes` forçando LF (scripts com CRLF quebram em containers Linux)
+
+Decisões desta etapa:
+
+- Dependências via `requirements*.txt`, e não como pacote instalável: mais simples de explicar e de usar no Dockerfile. O `pyproject.toml` guarda só a configuração das ferramentas.
+- `create_app()` (factory) em `main.py`: facilita criar a app com configurações diferentes nos testes.
+- Dependências do FastAPI com `Annotated` (`app/api/deps.py`), o padrão recomendado atual (o Ruff acusa `Depends()` como valor padrão de argumento).
+- `httpx2` no lugar de `httpx`: o Starlette atual marca o `httpx` como obsoleto no TestClient.
+- A API roda fora do Docker em desenvolvimento (reload rápido); o compose local sobe só o MySQL.
+
+Verificação:
+
+- `ruff check` e `ruff format --check`: sem erros.
+- `pytest`: 1 passou, sem avisos.
+- API rodando: `GET /api/health` → 200 `{"status":"ok","environment":"development"}`; `/docs` → 200.
+- CORS: origem `http://localhost:5173` liberada; origem desconhecida recusada (400 no preflight).
+- `docker compose config`: válido. (Subida do MySQL será verificada na Etapa 2, com o Docker Desktop ligado.)
 
 Commits sugeridos:
 
 ```bash
+git add .gitattributes
+git commit -m "chore: normaliza finais de linha para LF com .gitattributes"
+
+git add backend/
 git commit -m "chore(backend): cria estrutura do projeto FastAPI com configurações e health check"
+
+git add docker-compose.yml infra/
 git commit -m "chore: adiciona docker compose com MySQL para desenvolvimento local"
+
+git add progress.md
+git commit -m "docs: registra conclusão da etapa 1 e convenção de commits em português"
 ```
 
 ### Etapa 2 — Banco, modelos, migrações e infraestrutura de testes
