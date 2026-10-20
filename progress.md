@@ -183,15 +183,37 @@ git add progress.md && git commit -m "docs: registra conclusão da etapa 2"
 
 ### Etapa 3 — Seed e simulador
 
-Status: pendente
+Status: **concluída** (20/10/2026) · Branch: `feat/database-models`
 
-- [ ] `scripts/seed.py`: 3 analistas + ~100 incidentes realistas (BRs, km, cidades, placas Mercosul)
-- [ ] `scripts/simulate_trucks.py`: cria incidentes a cada N segundos (para a demo)
+- [x] `scripts/fake_data.py`: gerador de incidentes realistas (20 trechos de rodovias reais, placas Mercosul, títulos/descrições por categoria, criticidade proporcional à categoria). Reaproveitável pelo simulador.
+- [x] `scripts/seed.py`: 3 analistas demo + 100 incidentes com histórico coerente (abertos sem responsável; em investigação com claim; fechados/inconclusivos com nota de resolução)
+- [x] `app/core/security.py`: hash bcrypt de senha (adiantado da Etapa 5; o seed precisa gravar senhas reais)
+- [x] Relacionamento `Incident.events` ↔ `IncidentEvent.incident` (sem mudança no esquema, sem migração)
+- [ ] `scripts/simulate_trucks.py` → **movido para a Etapa 5**: vai enviar incidentes pela API, que só existe depois do CRUD e da autenticação
 
-Commit sugerido:
+Credenciais demo: `ana@logos.demo`, `bruno@logos.demo`, `carla@logos.demo`, senha `logos2026`.
+
+Decisões desta etapa:
+
+- **Analistas mantidos, incidentes recriados** a cada execução: dá para rodar o seed de novo antes da demo sem duplicar usuários.
+- **Seed bloqueado em produção** sem `--allow-production`, para não apagar dados reais por engano.
+- **Gerador recebe `random.Random`**: os testes usam semente fixa e geram sempre os mesmos dados.
+
+Verificação:
+
+- `pytest --cov`: **15 passaram**, cobertura 95% (só o `main()` da linha de comando fica de fora, verificado manualmente).
+- `python -m scripts.seed` no banco de dev: 57 abertos (nenhum com responsável), 22 em investigação, 16 fechados e 5 inconclusivos (todos com responsável), 164 eventos. Acentos gravados corretamente em UTF-8.
+
+Commits sugeridos (um comando por linha):
 
 ```bash
-git commit -m "feat(backend): adiciona script de seed e simulador de incidentes dos caminhões"
+git add backend/app/core/security.py backend/requirements.txt backend/tests/test_security.py && git commit -m "feat(backend): adiciona hash de senha com bcrypt"
+
+git add backend/app/models && git commit -m "feat(backend): relaciona incidentes ao seu histórico de eventos"
+
+git add backend/scripts backend/tests/test_seed.py backend/pyproject.toml && git commit -m "feat(backend): adiciona seed com analistas demo e 100 incidentes realistas"
+
+git add progress.md && git commit -m "docs: registra conclusão da etapa 3"
 ```
 
 ### Etapa 4 — CRUD, filtros e validação
@@ -219,11 +241,13 @@ git commit -m "test(backend): cobre validação de entrada, filtros e ordenaçã
 
 Status: pendente
 
-- [ ] Hash bcrypt, emissão e validação de JWT
+- [x] Hash bcrypt (adiantado na Etapa 3)
+- [ ] Emissão e validação de JWT
 - [ ] `POST /api/auth/login` (com rate limit) e `GET /api/auth/me`
 - [ ] Rotas de incidentes protegidas
 - [ ] CORS configurado por variável de ambiente
 - [ ] Fixtures de teste: analista autenticado e header com token (vindo da Etapa 2)
+- [ ] `scripts/simulate_trucks.py` (vindo da Etapa 3): faz login e envia incidentes pela API a cada N segundos, reaproveitando `scripts/fake_data.py`
 - [ ] **Testes:** S1–S4
 
 Commits sugeridos:
