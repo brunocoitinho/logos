@@ -18,6 +18,21 @@ select = [
     "SIM", # simplify
 ]
 
+[tool.ruff.lint.isort]
+# A pasta alembic/ do projeto faria o Ruff tratar o pacote alembic como código local.
+known-third-party = ["alembic"]
+
+[tool.ruff.lint.per-file-ignores]
+# O conftest define variáveis de ambiente antes de importar a aplicação.
+"tests/conftest.py" = ["E402"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
+
+[tool.coverage.run]
+source = ["app"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
