@@ -1,0 +1,134 @@
+# CI/CD do backend.
+#
+# - Em todo PR que mexe no backend/infra: lint + testes contra um MySQL real.
+# - Em push na main (merge do PR de release): se os testes passarem, faz o deploy na VPS
+#   por SSH e confere se a produção respondeu saudável.
+#
+# Secrets necessários (Settings → Secrets and variables → Actions):
+#   DEPLOY_HOST         IP da VPS
+#   DEPLOY_USER         usuário SSH
+#   DEPLOY_SSH_KEY      chave privada exclusiva do deploy
+#   DEPLOY_KNOWN_HOSTS  linha do known_hosts da VPS (evita ataque man-in-the-middle)
+#
+# Na VPS, a chave pública fica restrita a um único comando no authorized_keys:
+#   restrict,command="sh /opt/logos/infra/deploy.sh" ssh-ed25519 AAAA... github-actions-deploy
+# Mesmo que a chave vaze, ela só consegue disparar o deploy; não abre um terminal.
+
+name: Backend
+
+on:
+  pull_request:
+    paths:
+      - "backend/**"
+      - "infra/**"
+      - ".github/workflows/backend.yml"
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "infra/**"
+      - ".github/workflows/backend.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Lint e testes
+    runs-on: ubuntu-latest
+    # Um novo push no mesmo PR cancela a execução anterior, que ficou obsoleta.
+    concurrency:
+      group: backend-test-${{ github.ref }}
+      cancel-in-progress: true
+    defaults:
+      run:
+        working-directory: backend
+
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: logos_test
+          MYSQL_USER: logos
+          MYSQL_PASSWORD: logos
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=30
+
+    env:
+      TEST_DATABASE_URL: mysql+pymysql://logos:logos@127.0.0.1:3306/logos_test
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+
+      - name: Instala dependências
+        run: pip install -r requirements-dev.txt
+
+      - name: Lint (Ruff)
+        run: |
+          ruff check .
+          ruff format --check .
+
+      - name: Testes (falha se a cobertura cair abaixo de 90%)
+        run: pytest --cov --cov-report=term --cov-fail-under=90
+
+  deploy:
+    name: Deploy em produção
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://logos-api.startbc.online/docs
+    # Deploys nunca rodam em paralelo nem são cancelados no meio.
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+
+    steps:
+      - name: Configura a chave SSH de deploy
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Executa o deploy na VPS
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        # A VPS ignora o comando pedido e roda só o deploy.sh (restrição da chave).
+        run: ssh -i ~/.ssh/deploy_key -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST"
+
+      - name: Confere a saúde da produção
+        run: |
+          for attempt in $(seq 1 12); do
+            if curl --fail --silent https://logos-api.startbc.online/api/health; then
+              echo
+              echo "Produção saudável."
+              exit 0
+            fi
+            echo "Tentativa $attempt: ainda não respondeu; aguardando 5 s..."
+            sleep 5
+          done
+          echo "Produção não respondeu saudável após o deploy."
+          exit 1
+
+      - name: Remove a chave do runner
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
