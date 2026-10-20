@@ -306,44 +306,64 @@ git add progress.md PRD.md && git commit -m "docs: registra conclusão da etapa 
 
 ### Etapa 6 — Ciclo de vida, concorrência e resiliência (núcleo do case)
 
-Status: pendente
+Status: **concluída** (20/10/2026) · Branch: `feat/incident-lifecycle`
 
-- [ ] Serviço de transições (máquina de estados do PRD §4.2)
-- [ ] `claim` atômico, `release`, `transition` com `version`
-- [ ] 409 com estado atual e nome de quem agiu
-- [ ] Registro em `incident_events` + `GET /api/incidents/{id}/events`
-- [ ] `Idempotency-Key` no POST
-- [ ] Retry com backoff (`tenacity`) em falha transitória; 503 quando o banco está fora
-- [ ] **Testes de concorrência:** C1 (10 threads → 1 vencedor) · C3, C4, C6 (C2 e C5 já feitos na Etapa 4)
-- [ ] **Testes de ciclo de vida:** L1 (transições válidas) · L2 (todas as inválidas, geradas automaticamente) · L3
-- [ ] **Testes de resiliência:** R1–R3
+- [x] Máquina de estados do PRD §4.2 em `services/incident_lifecycle.py` (transições permitidas declaradas como dados)
+- [x] `claim` atômico (UPDATE condicional), `release` e `transition` com `version`
+- [x] 409 com estado atual e nome de quem agiu ("Ana Souza assumiu este incidente antes de você.")
+- [x] `GET /api/incidents/{id}/events` (histórico com o nome de quem agiu)
+- [x] `Idempotency-Key` no POST (nova coluna única + migração); o simulador reenvia com a mesma chave
+- [x] 3 tentativas de conexão com espera crescente; 503 quando o banco está fora; `/health` checa o banco
+- [x] **Testes de concorrência:** C1 (10 analistas → 1 vencedor, 3 rodadas), C3, C4, C6 (inclusive reenvios simultâneos) e edição simultânea
+- [x] **Testes de ciclo de vida:** L1, L2 (12 transições inválidas geradas automaticamente), L3
+- [x] **Testes de resiliência:** R1–R3
 
-Commits sugeridos:
+Decisões desta etapa:
+
+- **Claim sem `version`:** o lock é o próprio estado (`WHERE status = 'OPEN' AND assigned_to_id IS NULL`), checado e gravado num único UPDATE. Assim, uma edição no título não impede alguém de assumir.
+- **Duplo clique é seguro:** quem já é o responsável e clica de novo em Assumir recebe 200, sem novo evento.
+- **Ordem das checagens:** 404 → versão (409 com estado atual) → transição (422) → permissão (403). Com a tela desatualizada, o analista recebe o estado novo em vez de um erro confuso.
+- **Encerrar** (Fechado/Inconclusivo): só o responsável, com nota obrigatória (mín. 5 caracteres). **Reabrir:** qualquer analista, com motivo; o incidente volta para a fila sem responsável. Quem encerrou continua registrado.
+- **Mensagens que orientam:** tentar mudar para Em Investigação pela transição indica a ação Assumir; voltar para Aberto indica Liberar.
+- **Só a conexão é repetida automaticamente**, não os comandos SQL: repetir uma escrita poderia duplicá-la. Sem `tenacity`: um evento `do_connect` do SQLAlchemy com um laço simples.
+- **Idempotência:** 201 quando cria, 200 com `Idempotent-Replayed: true` quando é reenvio. Reenvios simultâneos são barrados pela restrição UNIQUE do banco.
+
+Prova de que o teste C1 é real (teste de mutação, feito fora do repositório):
+
+- Trocando, só durante o teste, o claim atômico por um "lê, confere e depois grava", **os 10 analistas venceram** (10 respostas 200). Com o UPDATE atômico: 1 vencedor e 9 conflitos. O teste C1 detecta a falha.
+- C1 rodou 5 vezes seguidas (15 rodadas de 10 analistas) sem nenhuma falha.
+
+Problema encontrado e corrigido:
+
+- Na verificação ao vivo, a API respondia com código antigo: um processo da Etapa 5 continuava ocupando a porta 8000. No Windows, o `python.exe` do `.venv` é um lançador que cria o Python real como processo filho; encerrar só o lançador deixou o filho órfão. Agora a API de teste é encerrada derrubando a árvore de processos.
+
+Verificação:
+
+- `pytest --cov`: **190 passaram**, cobertura **96%** (services e rotas entre 99% e 100%).
+- Ao vivo: health `{"status":"ok","database":"up"}`; Ana assume (v2); Bruno recebe 409 com o nome da Ana; Bruno tenta fechar → 403; Ana fecha (v3); histórico: CREATED (Telemetria da Frota) → CLAIMED → STATUS_CHANGED (Ana Souza).
+
+Commits sugeridos (um comando por linha, a partir da raiz):
 
 ```bash
-git commit -m "feat(backend): adiciona máquina de estados do status do incidente"
-git commit -m "test(backend): cobre transições de status válidas e inválidas"
-git commit -m "feat(backend): implementa claim atômico e optimistic locking com conflito 409"
-git commit -m "test(backend): comprova que claims simultâneos têm um único vencedor"
-git commit -m "feat(backend): registra histórico de eventos do incidente"
-git commit -m "feat(backend): suporta chave de idempotência na criação de incidentes"
-git commit -m "feat(backend): repete falhas transitórias do banco e retorna 503 quando indisponível"
-git commit -m "test(backend): cobre queda do banco e recuperação de falhas transitórias"
+git add backend/app/core/errors.py backend/app/db/session.py backend/app/schemas/health.py backend/app/api/routes/health.py && git commit -m "feat(backend): repete conexões com o banco, responde 503 quando indisponível e checa o banco no health"
+
+git add backend/app/models/incident.py backend/alembic/versions && git commit -m "feat(backend): adiciona chave de idempotência aos incidentes"
+
+git add backend/app/services/incidents.py backend/app/schemas/incident.py backend/app/services/incident_lifecycle.py backend/app/api/routes/incidents.py && git commit -m "feat(backend): implementa claim atômico, liberação, transições de status e histórico"
+
+git add backend/scripts/simulate_trucks.py backend/tests/test_simulator.py && git commit -m "feat(backend): reenvia incidentes do simulador com a mesma chave de idempotência"
+
+git add backend/tests && git commit -m "test(backend): comprova que claims simultâneos têm um único vencedor e cobre ciclo de vida e resiliência"
+
+git add progress.md PRD.md && git commit -m "docs: registra conclusão da etapa 6"
 ```
 
 ### Etapa 7 — Cobertura e robustez extra
 
-Status: pendente
+Status: **cobertura atingida na Etapa 6** (96% no total; services e rotas entre 99% e 100%)
 
-- [ ] Relatório de cobertura; completar até ≥ 90% em `services/` e `api/`
-- [ ] *(diferencial, se houver tempo)* V5: Schemathesis contra o OpenAPI, sem nenhuma resposta 500
-
-Commits sugeridos:
-
-```bash
-git commit -m "test(backend): eleva a cobertura de services e rotas acima de 90%"
-git commit -m "test(backend): adiciona testes baseados em propriedades com Schemathesis"
-```
+- [x] Relatório de cobertura; ≥ 90% em `services/` e `api/`
+- [ ] *(diferencial, se houver tempo — item 1 da ordem de corte)* V5: Schemathesis contra o OpenAPI, sem nenhuma resposta 500
 
 ### Etapa 8 — Deploy da API na VPS (walking skeleton)
 

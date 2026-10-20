@@ -170,7 +170,7 @@ flowchart LR
 | Migrações | **Alembic** | Esquema versionado junto com o código |
 | Validação | **Pydantic v2** | Enums, limites de tamanho, tipos estritos, mensagens padronizadas |
 | Auth | **JWT** (PyJWT) + **bcrypt** | Stateless, simples de demonstrar |
-| Resiliência | `pool_pre_ping`, `pool_recycle`, timeouts, retry com backoff (`tenacity`) em falhas transitórias de conexão | Lidar com lentidão/queda do banco |
+| Resiliência | `pool_pre_ping`, `pool_recycle`, timeouts, 3 tentativas de conexão com espera crescente (evento `do_connect` do SQLAlchemy, sem dependência extra), 503 quando o banco está fora | Lidar com lentidão/queda do banco. Só a conexão é repetida; comandos não, para não duplicar escritas |
 | Rate limit | Limitador próprio em memória no login (5 falhas / 5 min por IP + e-mail) | Segurança básica contra força bruta; ~40 linhas, sem dependência. Com várias instâncias, migraria para Redis |
 | Testes | **pytest** + `httpx` TestClient | Incluindo teste de concorrência (dois claims → um 409) |
 | Qualidade | **Ruff** (lint + format) | Rápido, padrão atual |
@@ -240,7 +240,7 @@ backend/
 | GET | `/api/incidents/{id}/events` | Histórico |
 | POST | `/api/incidents` | Cria (aceita header `Idempotency-Key` para evitar duplicado em reenvio) |
 | PATCH | `/api/incidents/{id}` | Edita campos (exige `version`) |
-| POST | `/api/incidents/{id}/claim` | Assume (exige `version`) |
+| POST | `/api/incidents/{id}/claim` | Assume (sem `version`: o lock é o próprio estado, via `UPDATE ... WHERE status = 'OPEN' AND assigned_to_id IS NULL`) |
 | POST | `/api/incidents/{id}/release` | Libera (exige `version`) |
 | POST | `/api/incidents/{id}/transition` | Muda status (`to_status`, `note`, `version`) |
 | DELETE | `/api/incidents/{id}` | Soft delete (exige `version`) |
@@ -431,7 +431,7 @@ O que ele entrega e qual requisito do case cada recurso atende:
 |---|---|---|
 | R1 | Banco indisponível (sessão que lança `OperationalError`) | 503 no formato padrão |
 | R2 | Falha transitória uma vez, depois sucesso | O retry resolve; resposta 200 |
-| R3 | `/health` com o banco fora | Reporta `db: down` |
+| R3 | `/health` com o banco fora | 503 com `database: down` |
 
 **Frontend (MSW)**
 
@@ -543,7 +543,7 @@ O detalhamento passo a passo, com as mensagens de commit sugeridas, está em [`p
 | 0:30–1:30 | Demo: login, lista priorizada, cards, filtros (mostrar a URL mudando), dark mode |
 | 1:30–2:30 | **Conflito ao vivo:** duas janelas lado a lado, dois analistas clicam "Assumir"; um recebe o aviso de conflito |
 | 2:30–3:15 | Resiliência: DevTools em "Offline"/"Slow 3G" → banner, dados em cache, retry, rollback |
-| 3:15–4:30 | Code review: `services/incidents.py` (claim atômico + version), **teste C1 rodando (10 threads → 1 vencedor)**, schemas Pydantic, hook de mutation otimista, por que TanStack Query |
+| 3:15–4:30 | Code review: `services/incident_lifecycle.py` (claim atômico) e `services/incidents.py` (version), **teste C1 rodando (10 threads → 1 vencedor)** e o teste de mutação (claim ingênuo → 10 vencedores), schemas Pydantic, hook de mutation otimista, por que TanStack Query |
 | 4:30–5:00 | Arquitetura de deploy (diagrama) e próximos passos (WebSocket, mapa, SLA) |
 
 ---
