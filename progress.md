@@ -400,21 +400,50 @@ git add progress.md && git commit -m "docs: registra conclusão da etapa 7"
 
 ### Etapa 8 — Deploy da API na VPS (walking skeleton)
 
-Status: pendente
+Status: **em andamento** — stack validada localmente; falta subir na VPS · Branch: `chore/deploy-api`
 
-- [ ] `backend/Dockerfile`
-- [ ] `infra/docker-compose.prod.yml` (api + mysql + caddy; MySQL sem porta exposta; `restart: unless-stopped`)
-- [ ] `infra/Caddyfile` com `api.<dominio>` (plano B: hostname `srvXXXXXX.hstgr.cloud`)
-- [ ] Uvicorn com `--proxy-headers --forwarded-allow-ips` (rede do Docker): atrás do Caddy, sem isso o rate limit do login veria todos os acessos com o IP do Caddy e bloquearia todo mundo junto
-- [ ] Rodar migração + seed em produção
-- [ ] Testar `https://api.<dominio>/api/health` e `/docs`
+- [x] `backend/Dockerfile` (Python 3.13 slim, usuário sem privilégios, migrações automáticas na subida) + `.dockerignore`
+- [x] `infra/docker-compose.prod.yml` (caddy + api + mysql; `restart: unless-stopped`; healthchecks)
+- [x] `infra/Caddyfile` com `{$API_DOMAIN}`, HTTPS automático e cabeçalhos de segurança
+- [x] Uvicorn com `--proxy-headers --forwarded-allow-ips='*'` (seguro porque a API não publica porta)
+- [x] `infra/.env.example` e `infra/deploy.sh` (atualização com um comando)
+- [x] Ubuntu da VPS atualizado (sem reboot necessário)
+- [ ] Clonar na VPS, gerar segredos, subir a stack
+- [ ] Seed em produção (`--allow-production`)
+- [ ] Testar `https://logos-api.startbc.online/api/health` e `/docs`
 - [ ] UptimeRobot no `/api/health`
 
-Commits sugeridos:
+Decisões desta etapa:
+
+- **Só o Caddy publica portas para a internet** (80/443). A API não publica nenhuma; o MySQL fica em `127.0.0.1` da VPS, só para o DBeaver via túnel SSH. Isso contorna o fato de o Docker ignorar o ufw.
+- **Migrações rodam na subida do container** (`alembic upgrade head && uvicorn ...`): um deploy nunca sobe com o esquema desatualizado. Funciona porque há uma única instância.
+- **Um único processo uvicorn:** o limite de tentativas de login fica em memória.
+- **Segredos só na VPS**, gerados com `openssl rand -hex 32` no próprio servidor; o compose recusa subir se faltar algum (`${VAR:?}`).
+- **Projeto `logos-prod`** no compose de produção, diferente do `logos` do desenvolvimento, para nunca se misturarem.
+
+Validação local da stack de produção (com `API_DOMAIN=localhost`, que faz o Caddy usar certificado local):
+
+- HTTPS com HSTS e `nosniff`; HTTP → HTTPS (308).
+- `/api/health` → `{"status":"ok","database":"up","environment":"production"}`.
+- Seed recusado em produção sem a flag; com `--allow-production`, 100 incidentes.
+- Portas: só o Caddy publicado; API sem porta; MySQL só em `127.0.0.1`.
+- API roda como `appuser`, não como root.
+- **Proxy headers:** a API registra o IP do cliente (172.20.0.1), não o do Caddy (172.20.0.4). Um `X-Forwarded-For: 6.6.6.6` forjado pelo cliente foi ignorado: não dá para escapar do limite de login fingindo outro IP.
+
+Problema encontrado e corrigido:
+
+- Na 1ª inicialização, a API falhava ao migrar ("Connection refused") e só subia depois de 2 reinícios. Causa: o MySQL inicia um "servidor temporário" (só socket, sem TCP) para criar usuários e bancos, e o healthcheck `mysqladmin ping -h localhost` usa o socket, então declarava o banco pronto cedo demais. Correção: `-h 127.0.0.1` força TCP. Testado do zero (volumes apagados): 0 reinícios e 0 erros. O compose de desenvolvimento tinha o mesmo defeito e também foi corrigido.
+
+Commits sugeridos (um comando por linha, a partir da raiz):
 
 ```bash
-git commit -m "chore(backend): adiciona Dockerfile de produção"
-git commit -m "chore(infra): adiciona compose de produção com proxy reverso Caddy e HTTPS"
+git add backend/Dockerfile backend/.dockerignore && git commit -m "chore(backend): adiciona Dockerfile de produção"
+
+git add infra/docker-compose.prod.yml infra/Caddyfile infra/.env.example infra/deploy.sh && git commit -m "chore(infra): adiciona compose de produção com proxy reverso Caddy e HTTPS"
+
+git add docker-compose.yml && git commit -m "fix: considera o MySQL saudável só quando aceita conexões TCP"
+
+git add progress.md && git commit -m "docs: registra validação local do deploy"
 ```
 
 ---
