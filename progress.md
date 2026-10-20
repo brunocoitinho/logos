@@ -400,21 +400,70 @@ git add progress.md && git commit -m "docs: registra conclusão da etapa 7"
 
 ### Etapa 8 — Deploy da API na VPS (walking skeleton)
 
-Status: pendente
+Status: **API em produção** em `https://logos-api.startbc.online` (20/10/2026) · Branch: `chore/deploy-api`
 
-- [ ] `backend/Dockerfile`
-- [ ] `infra/docker-compose.prod.yml` (api + mysql + caddy; MySQL sem porta exposta; `restart: unless-stopped`)
-- [ ] `infra/Caddyfile` com `api.<dominio>` (plano B: hostname `srvXXXXXX.hstgr.cloud`)
-- [ ] Uvicorn com `--proxy-headers --forwarded-allow-ips` (rede do Docker): atrás do Caddy, sem isso o rate limit do login veria todos os acessos com o IP do Caddy e bloquearia todo mundo junto
-- [ ] Rodar migração + seed em produção
-- [ ] Testar `https://api.<dominio>/api/health` e `/docs`
+- [x] `backend/Dockerfile` (Python 3.13 slim, usuário sem privilégios, migrações automáticas na subida) + `.dockerignore`
+- [x] `infra/docker-compose.prod.yml` (caddy + api + mysql; `restart: unless-stopped`; healthchecks)
+- [x] `infra/Caddyfile` com `{$API_DOMAIN}`, HTTPS automático e cabeçalhos de segurança
+- [x] Uvicorn com `--proxy-headers --forwarded-allow-ips='*'` (seguro porque a API não publica porta)
+- [x] `infra/.env.example` e `infra/deploy.sh` (atualização com um comando)
+- [x] Ubuntu da VPS atualizado (sem reboot necessário)
+- [x] Clonado em `/opt/logos` na VPS; segredos gerados no servidor (`openssl rand -hex 32`, `.env` com `chmod 600`)
+- [x] Stack no ar; certificado Let's Encrypt obtido pelo Caddy
+- [x] Seed em produção (`--allow-production`): 3 analistas + 100 incidentes
+- [x] `https://logos-api.startbc.online/api/health` e `/docs` verificados de fora
+- [x] `HEAD /api/health` corrigido (respondia 405; ver abaixo)
 - [ ] UptimeRobot no `/api/health`
+- [ ] PR para `env/dev` e PR de release `env/dev` → `main`; VPS passa a seguir a `main`
 
-Commits sugeridos:
+Decisões desta etapa:
+
+- **Só o Caddy publica portas para a internet** (80/443). A API não publica nenhuma; o MySQL fica em `127.0.0.1` da VPS, só para o DBeaver via túnel SSH. Isso contorna o fato de o Docker ignorar o ufw.
+- **Migrações rodam na subida do container** (`alembic upgrade head && uvicorn ...`): um deploy nunca sobe com o esquema desatualizado. Funciona porque há uma única instância.
+- **Um único processo uvicorn:** o limite de tentativas de login fica em memória.
+- **Segredos só na VPS**, gerados com `openssl rand -hex 32` no próprio servidor; o compose recusa subir se faltar algum (`${VAR:?}`).
+- **Projeto `logos-prod`** no compose de produção, diferente do `logos` do desenvolvimento, para nunca se misturarem.
+
+Validação local da stack de produção (com `API_DOMAIN=localhost`, que faz o Caddy usar certificado local):
+
+- HTTPS com HSTS e `nosniff`; HTTP → HTTPS (308).
+- `/api/health` → `{"status":"ok","database":"up","environment":"production"}`.
+- Seed recusado em produção sem a flag; com `--allow-production`, 100 incidentes.
+- Portas: só o Caddy publicado; API sem porta; MySQL só em `127.0.0.1`.
+- API roda como `appuser`, não como root.
+- **Proxy headers:** a API registra o IP do cliente (172.20.0.1), não o do Caddy (172.20.0.4). Um `X-Forwarded-For: 6.6.6.6` forjado pelo cliente foi ignorado: não dá para escapar do limite de login fingindo outro IP.
+
+Verificação em produção (de fora, como um avaliador):
+
+- Health: `{"status":"ok","database":"up","environment":"production"}`.
+- Certificado Let's Encrypt, **TLS 1.3**, válido até 18/01/2027 (o Caddy renova sozinho).
+- HSTS e `nosniff`; HTTP → HTTPS (308); Swagger 200; login demo funcionando; sem token → 401.
+- **Portas 3306, 3307, 8000 e 33060 fechadas para a internet** (testado com conexão TCP direta ao IP da VPS).
+- Lista com 100 incidentes: ~0,12 s no total (≈ 40 ms de processamento no servidor).
+
+Problemas encontrados e corrigidos:
+
+- `HEAD /api/health` respondia **405**. Monitores de uptime (ex.: UptimeRobot) usam HEAD por padrão e marcariam a API como fora do ar mesmo funcionando. Corrigido com uma rota HEAD própria (fora do Swagger, para não duplicar a operação documentada) + teste.
+- Na 1ª inicialização, a API falhava ao migrar ("Connection refused") e só subia depois de 2 reinícios. Causa: o MySQL inicia um "servidor temporário" (só socket, sem TCP) para criar usuários e bancos, e o healthcheck `mysqladmin ping -h localhost` usa o socket, então declarava o banco pronto cedo demais. Correção: `-h 127.0.0.1` força TCP. Testado do zero (volumes apagados): 0 reinícios e 0 erros. O compose de desenvolvimento tinha o mesmo defeito e também foi corrigido.
+
+Commits sugeridos (um comando por linha, a partir da raiz):
 
 ```bash
-git commit -m "chore(backend): adiciona Dockerfile de produção"
-git commit -m "chore(infra): adiciona compose de produção com proxy reverso Caddy e HTTPS"
+git add backend/Dockerfile backend/.dockerignore && git commit -m "chore(backend): adiciona Dockerfile de produção"
+
+git add infra/docker-compose.prod.yml infra/Caddyfile infra/.env.example infra/deploy.sh && git commit -m "chore(infra): adiciona compose de produção com proxy reverso Caddy e HTTPS"
+
+git add docker-compose.yml && git commit -m "fix: considera o MySQL saudável só quando aceita conexões TCP"
+
+git add progress.md && git commit -m "docs: registra validação local do deploy"
+```
+
+Depois do deploy na VPS:
+
+```bash
+git add backend/app/api/routes/health.py backend/tests/test_health.py && git commit -m "fix(backend): aceita HEAD no health check para monitores de uptime"
+
+git add progress.md && git commit -m "docs: registra deploy da API em produção"
 ```
 
 ---

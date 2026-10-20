@@ -1,0 +1,16 @@
+# Só o necessário para rodar a API entra na imagem.
+.venv/
+__pycache__/
+*.py[cod]
+.env
+.env.*
+!.env.example
+tests/
+.pytest_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+coverage.xml
+htmlcov/
+Dockerfile
+.dockerignore
