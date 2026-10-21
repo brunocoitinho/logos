@@ -287,6 +287,7 @@ frontend/src/
 
 ### 5.5 Design da informação (gestão por exceção)
 
+- **Cor reservada para significado:** a interface é neutra (cinzas, preto e branco). Cor aparece só onde carrega informação: criticidade, status e alertas. Se botões e marca fossem coloridos, competiriam com o incidente crítico pela atenção do analista.
 - **Filtro padrão:** só Aberto + Em Investigação. Fechados não competem pela atenção.
 - **Cards no topo:** "Alta abertas: 7", "Sem responsável: 12", "Em investigação: 9". Clicar aplica o filtro.
 - **Linha do incidente**, densa e escaneável:

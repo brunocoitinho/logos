@@ -566,15 +566,48 @@ git add progress.md && git commit -m "docs: registra conclusão da etapa 9"
 
 ### Etapa 10 — Login
 
-Status: pendente
+Status: **concluída** (20/10/2026) · Branch: `feat/login`
 
-- [ ] Página de login (React Hook Form + Yup) com credenciais demo visíveis
-- [ ] Contexto de auth e rotas protegidas
+- [x] Página de login (React Hook Form + Yup): validação no cliente, mostrar/ocultar senha, botão desabilitado com spinner durante o envio
+- [x] Contas de demonstração clicáveis (Ana, Bruno, Carla): um clique preenche e-mail e senha
+- [x] Mensagens da API exibidas como vieram: senha errada (401), excesso de tentativas (429, com o tempo de espera), sem conexão
+- [x] Aviso de sessão expirada; some depois de um novo login
+- [x] Após o login, volta para a página que o analista tentou abrir; quem já está logado e abre `/login` vai para o painel
+- [x] Painel de apresentação (desktop) explicando o propósito do sistema; layout de coluna única no celular
+- [x] Playwright instalado (será usado no E2E da Etapa 14); usado aqui para capturar a tela real nos temas claro/escuro e no celular
 
-Commit sugerido:
+Decisões desta etapa:
+
+- **Contas demo visíveis na tela:** o avaliador testa sem ler o README, e a demo do conflito no vídeo fica rápida (dois analistas em duas janelas).
+- **Cor reservada para significado** (PRD §5.5): interface neutra; cor só em criticidade, status e alertas.
+- **Acessibilidade:** `label` ligado a cada campo, `aria-invalid` e `aria-describedby` nos erros, `autocomplete` correto (gerenciadores de senha funcionam), botão de senha com `aria-label`.
+
+Verificação visual (Playwright contra a API e o front locais):
+
+- Login real com a conta demo da Ana: token salvo e painel aberto com o nome dela.
+- Capturas conferidas: desktop claro e escuro, erro de validação, senha errada, celular (390 px).
+- Ajustes feitos a partir das capturas: o botão do devtools do TanStack cobria o rodapé (movido para a direita); painel esquerdo ganhou textura sutil de pontos.
+
+Observação de ambiente: a porta 5173 estava ocupada por outro projeto local; a verificação usou a 5180 (com `CORS_ORIGINS` ajustado só na API local de teste).
+
+Verificação:
+
+- `tsc -b` e `oxlint`: sem erros nem avisos.
+- `vitest run`: **32 passaram** (11 novos).
+- `npm run build`: 164 kB gzip.
+
+Commits sugeridos (um comando por linha, a partir da raiz):
 
 ```bash
-git commit -m "feat(frontend): adiciona página de login e rotas protegidas"
+git add frontend/package.json frontend/package-lock.json && git commit -m "chore(frontend): adiciona Playwright para testes de ponta a ponta"
+
+git add frontend/src/components/ui && git commit -m "chore(frontend): adiciona componentes de formulário do shadcn/ui"
+
+git add frontend/src/features/auth/LoginPage.tsx frontend/src/features/auth/demo-accounts.ts frontend/src/features/auth/login-schema.ts frontend/src/App.tsx && git commit -m "feat(frontend): implementa tela de login com validação e contas de demonstração"
+
+git add frontend/src/features/auth/login.test.tsx && git commit -m "test(frontend): cobre login, validação, erros da API e redirecionamentos"
+
+git add PRD.md progress.md && git commit -m "docs: registra conclusão da etapa 10"
 ```
 
 ### Etapa 11 — Painel de incidentes
