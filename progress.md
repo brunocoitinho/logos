@@ -61,6 +61,7 @@ feat/*, test/*, chore/*, docs/*  ← um branch por etapa, criado a partir de env
 | D11 | 20/10/2026 | Meta de cobertura ≥ 90% em services/api e hooks | Mesmo critério usado no trabalho |
 | D12 | 20/10/2026 | Fluxo `feature → env/dev → main` com PRs e merge commit (sem squash) | Mostra o processo de construção; preserva o histórico granular |
 | D13 | 20/10/2026 | CI/CD do backend no GitHub Actions: testes em todo PR; deploy automático na VPS a cada push na `main` | Antecipado da Etapa 15 por estar à frente do cronograma; cada PR do frontend já passa pelo CI |
+| D14 | 20/10/2026 | Estilos com **Tailwind + shadcn/ui** (e não Sass + CSS Modules) | Componentes acessíveis prontos (Radix) e tokens de tema; ~4–6 h a menos no prazo. Justificativa e cola Tailwind → CSS no PRD §6.1 |
 
 ---
 
@@ -470,7 +471,7 @@ git add progress.md && git commit -m "docs: registra deploy da API em produção
 
 ### Etapa 8.1 — CI/CD do backend (antecipada)
 
-Status: **em andamento** · Branch: `ci/backend-pipeline`
+Status: **concluída** (20/10/2026) · Branch: `ci/backend-pipeline` · PRs #10 (env/dev) e #11 (release 1.1)
 
 - [x] `.github/workflows/backend.yml`: job `test` (Ruff + pytest contra MySQL real, cobertura mínima de 90%) em todo PR que mexe em `backend/` ou `infra/`
 - [x] Job `deploy` só em push na `main` e só se `test` passar: SSH na VPS → `deploy.sh` → confere `/api/health`
@@ -479,10 +480,19 @@ Status: **em andamento** · Branch: `ci/backend-pipeline`
 - [x] Cenário do CI simulado localmente (MySQL novo, banco criado pelo serviço): 208 testes, cobertura 96%
 - [x] Chave SSH exclusiva do deploy gerada (`~/.ssh/logos_deploy`); host key da VPS conferida com a já conhecida
 - [x] Badge do CI no README
-- [ ] Chave pública na VPS, restrita ao deploy (`restrict,command=...`)
-- [ ] Secrets no GitHub: `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS`
-- [ ] VPS seguindo a `main`
-- [ ] Primeiro deploy automático confirmado
+- [x] Chave pública na VPS, restrita ao deploy (`restrict,command=...`)
+- [x] Secrets no GitHub: `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS`
+- [x] VPS seguindo a `main` (`main...origin/main`, no commit do release do PR #9)
+- [x] Primeiro deploy automático confirmado: merge do PR #11 na `main` → testes ✅ → deploy ✅ → produção saudável. GitHub, VPS e deployment `production` no mesmo commit (`5b63feb`)
+
+Testes da chave restrita (feitos da máquina local contra a VPS):
+
+| Teste | Resultado |
+|---|---|
+| Autenticação com a chave do deploy | ✅ |
+| Comando injetado (`echo ...; cat /etc/shadow`) | ✅ ignorado; rodou só o `deploy.sh`, nenhuma linha do comando na saída |
+| Terminal interativo (`-tt`) | ✅ negado (`PTY allocation request failed`) |
+| Túnel para o MySQL (`-L`) | ✅ negado pelo servidor (`administratively prohibited`) |
 
 Decisões:
 
@@ -507,92 +517,243 @@ git add progress.md && git commit -m "docs: registra CI/CD do backend"
 
 ### Etapa 9 — Esqueleto do frontend
 
-Status: pendente
+Status: **concluída** (20/10/2026) · Branch: `feat/frontend-scaffold`
 
-- [ ] Vite + React + TS, Tailwind, shadcn/ui, Router, TanStack Query, Axios
-- [ ] Cliente Axios com interceptor de JWT e tratamento de 401
-- [ ] Tema claro/escuro com persistência
-- [ ] Layout base (header, toggle de tema)
-- [ ] Vitest + Testing Library + **MSW** (handlers base e utilitário `renderWithProviders`)
-- [ ] **Testes:** FE9 (401 → login) · FE10 (tema)
+- [x] Vite 8 + React 19 + TypeScript 6, Tailwind 4, shadcn/ui (preset Nova sobre Radix, fonte Geist), React Router 7, TanStack Query 5, Axios
+- [x] Cliente Axios: token no header, timeout de 10 s, erros normalizados (`ApiError`: resposta da API, queda de rede e timeout no mesmo formato) e 401 → encerra a sessão
+- [x] `QueryClient` com política de retry: repete rede/5xx até 3 vezes com espera crescente (1 s, 2 s, 4 s); não repete 4xx; nunca repete escritas
+- [x] Tema claro/escuro/sistema com persistência; script no `index.html` aplica o tema antes do React (sem "flash" de tela clara)
+- [x] Layout base (cabeçalho com marca, analista logado, tema e sair) e rota protegida
+- [x] Vitest + Testing Library + **MSW**; `renderWithProviders` e `renderApp`
+- [x] **Testes:** FE9 (401 → login com aviso) · FE10 (tema) + erros da API, política de retry, falha de rede com "Tentar novamente", logout
 
-Commits sugeridos:
+Decisões desta etapa:
+
+- **Contexto e Provider em arquivos separados** (`auth-context.ts` + `AuthProvider.tsx`; `theme-context.ts` + `ThemeProvider.tsx`): mantém o Fast Refresh funcionando (regra `only-export-components` do oxlint).
+- **Cliente HTTP não conhece o React Router:** o `AuthProvider` registra o que fazer no 401 (`setUnauthorizedHandler`).
+- **Token no `localStorage`:** simples e sobrevive ao F5. Trade-off documentado no código: vulnerável a XSS; a alternativa (cookie httpOnly) exigiria proteção CSRF e mesmo domínio.
+- **`@hookform/resolvers` 5.9** e não a 6.0: a 6.0, recém-lançada, tem conflito interno entre dependências opcionais. Não usamos `--legacy-peer-deps`, que esconderia problemas reais.
+- **Pacote `cn` auditado** antes de usar (veio com o shadcn): mantido pelo próprio autor do shadcn, repositório oficial, sem dependências; nenhum pacote do projeto roda script de instalação.
+- **Dependências enxutas:** removidos `clsx`, `tailwind-merge` e a fonte Inter (substituídos pelo `cn` e pela Geist do preset); `shadcn` só como dependência de build. `npm audit`: 0 vulnerabilidades.
+
+Problemas encontrados e corrigidos:
+
+- **Bug real (corrida no logout por 401):** ao limpar o token, a rota protegida também redirecionava para o login e sobrescrevia o estado da navegação; o aviso "sua sessão expirou" sumia. Corrigido guardando o motivo no contexto de autenticação. O teste FE9 pegou o bug.
+- **CORS no jsdom:** o ambiente de teste aplicava CORS (e o preflight do header `Authorization`) às respostas do MSW. Os testes passam a simular a página na mesma origem da API; o CORS real segue coberto no backend (S4).
+- **MSW 3:** a opção `onUnhandledRequest` virou `onUnhandledFrame` (cobre também WebSocket).
+
+Verificação:
+
+- `tsc -b` e `oxlint`: sem erros nem avisos.
+- `vitest run`: **21 passaram**; cobertura 84% (o que fica de fora é a montagem do `App`).
+- `npm run build`: 137 kB gzip; o painel de devtools do TanStack **não** entra no bundle de produção.
+
+Commits sugeridos (um comando por linha, a partir da raiz):
 
 ```bash
-git commit -m "chore(frontend): cria app React com Vite, Tailwind e shadcn/ui"
-git commit -m "feat(frontend): adiciona cliente da API e provider do TanStack Query"
-git commit -m "feat(frontend): adiciona alternância de tema claro/escuro"
-git commit -m "test(frontend): configura Vitest com MSW e cobre redirecionamento de auth e tema"
+git add frontend/.gitignore frontend/.oxlintrc.json frontend/.env.example frontend/components.json frontend/index.html frontend/package.json frontend/package-lock.json frontend/public frontend/tsconfig.json frontend/tsconfig.app.json frontend/tsconfig.node.json frontend/vite.config.ts frontend/src/index.css frontend/src/lib/utils.ts frontend/src/components/ui && git commit -m "chore(frontend): cria app React com Vite, Tailwind e shadcn/ui"
+
+git add frontend/src/api/auth.ts frontend/src/api/client.ts frontend/src/api/errors.ts frontend/src/api/types.ts frontend/src/lib/env.ts frontend/src/lib/query-client.ts && git commit -m "feat(frontend): adiciona cliente da API com erros padronizados e política de retry"
+
+git add frontend/src/features/theme/ThemeProvider.tsx frontend/src/features/theme/ThemeToggle.tsx frontend/src/features/theme/theme-context.ts && git commit -m "feat(frontend): adiciona alternância de tema claro/escuro"
+
+git add frontend/src/features/auth/AuthProvider.tsx frontend/src/features/auth/LoginPage.tsx frontend/src/features/auth/ProtectedRoute.tsx frontend/src/features/auth/auth-context.ts frontend/src/features/auth/token-storage.ts frontend/src/components/layout frontend/src/features/incidents frontend/src/routes.tsx frontend/src/App.tsx frontend/src/main.tsx && git commit -m "feat(frontend): adiciona sessão com JWT, rotas protegidas e layout base"
+
+git add frontend/src && git commit -m "test(frontend): configura Vitest com MSW e cobre sessão, tema, erros e retry"
+
+git add progress.md && git commit -m "docs: registra conclusão da etapa 9"
 ```
 
 ### Etapa 10 — Login
 
-Status: pendente
+Status: **concluída** (20/10/2026) · Branch: `feat/login`
 
-- [ ] Página de login (React Hook Form + Yup) com credenciais demo visíveis
-- [ ] Contexto de auth e rotas protegidas
+- [x] Página de login (React Hook Form + Yup): validação no cliente, mostrar/ocultar senha, botão desabilitado com spinner durante o envio
+- [x] Contas de demonstração clicáveis (Ana, Bruno, Carla): um clique preenche e-mail e senha
+- [x] Mensagens da API exibidas como vieram: senha errada (401), excesso de tentativas (429, com o tempo de espera), sem conexão
+- [x] Aviso de sessão expirada; some depois de um novo login
+- [x] Após o login, volta para a página que o analista tentou abrir; quem já está logado e abre `/login` vai para o painel
+- [x] Painel de apresentação (desktop) explicando o propósito do sistema; layout de coluna única no celular
+- [x] Playwright instalado (será usado no E2E da Etapa 14); usado aqui para capturar a tela real nos temas claro/escuro e no celular
 
-Commit sugerido:
+Decisões desta etapa:
+
+- **Contas demo visíveis na tela:** o avaliador testa sem ler o README, e a demo do conflito no vídeo fica rápida (dois analistas em duas janelas).
+- **Cor reservada para significado** (PRD §5.5): interface neutra; cor só em criticidade, status e alertas.
+- **Acessibilidade:** `label` ligado a cada campo, `aria-invalid` e `aria-describedby` nos erros, `autocomplete` correto (gerenciadores de senha funcionam), botão de senha com `aria-label`.
+
+Verificação visual (Playwright contra a API e o front locais):
+
+- Login real com a conta demo da Ana: token salvo e painel aberto com o nome dela.
+- Capturas conferidas: desktop claro e escuro, erro de validação, senha errada, celular (390 px).
+- Ajustes feitos a partir das capturas: o botão do devtools do TanStack cobria o rodapé (movido para a direita); painel esquerdo ganhou textura sutil de pontos.
+
+Observação de ambiente: a porta 5173 estava ocupada por outro projeto local; a verificação usou a 5180 (com `CORS_ORIGINS` ajustado só na API local de teste).
+
+Verificação:
+
+- `tsc -b` e `oxlint`: sem erros nem avisos.
+- `vitest run`: **32 passaram** (11 novos).
+- `npm run build`: 164 kB gzip.
+
+Commits sugeridos (um comando por linha, a partir da raiz):
 
 ```bash
-git commit -m "feat(frontend): adiciona página de login e rotas protegidas"
+git add frontend/package.json frontend/package-lock.json && git commit -m "chore(frontend): adiciona Playwright para testes de ponta a ponta"
+
+git add frontend/src/components/ui && git commit -m "chore(frontend): adiciona componentes de formulário do shadcn/ui"
+
+git add frontend/src/features/auth/LoginPage.tsx frontend/src/features/auth/demo-accounts.ts frontend/src/features/auth/login-schema.ts frontend/src/App.tsx && git commit -m "feat(frontend): implementa tela de login com validação e contas de demonstração"
+
+git add frontend/src/features/auth/login.test.tsx && git commit -m "test(frontend): cobre login, validação, erros da API e redirecionamentos"
+
+git add PRD.md progress.md && git commit -m "docs: registra conclusão da etapa 10"
 ```
 
 ### Etapa 11 — Painel de incidentes
 
-Status: pendente
+Status: **concluída** (20/10/2026) · Branch: `feat/incidents-dashboard`
 
-- [ ] Cards de resumo (clicáveis → aplicam filtro)
-- [ ] Lista priorizada (barra de criticidade, ícone da categoria, tempo de espera vivo, responsável)
-- [ ] Filtros em chips, sincronizados com a URL; padrão = Aberto + Em Investigação
-- [ ] Skeleton, estado vazio, estado de erro com "Tentar novamente"
-- [ ] Polling + indicador "atualizado há X s"
-- [ ] **Testes:** FE1–FE5
+- [x] Cards de resumo clicáveis (aplicam o filtro): "Alta, sem responsável" (acende em vermelho quando > 0), "Aguardando responsável", "Em investigação", "Encerrados"
+- [x] Lista priorizada na ordem da API: barra lateral, ícone e **texto** de criticidade (nunca só cor; formas diferentes por nível: octógono, triângulo, círculo); ícone e nome da categoria; rodovia/km, cidade, placa; status e responsável
+- [x] **Tempo de espera vivo** ("há 3 h 18 min", atualiza sozinho) com **SLA por criticidade** (premissa do MVP: Alta 15 min, Média 60 min, Baixa 4 h): aberto acima do SLA fica em destaque
+- [x] Indicador pulsante discreto para Alta + Acidente com Vítimas + sem responsável (respeita "reduzir movimento" do sistema)
+- [x] Filtros em chips (criticidade, status, categoria) + busca com espera de 300 ms; **sincronizados com a URL** (F5, "voltar" e link compartilhável funcionam); valores inválidos na URL são ignorados
+- [x] Estados: esqueleto no carregamento; erro com "Tentar novamente"; **falha ao atualizar mantém a lista na tela com aviso**; vazio "tudo em dia" × vazio "sem resultado para os filtros" (com "Limpar filtros"); troca de filtro sem piscar (dados anteriores esmaecidos)
+- [x] Atualização automática a cada 10 s + "Atualizado há X s" + botão "Atualizar agora"
+- [x] Total de resultados e paginação (100 por página)
+- [x] No celular: filtros recolhidos atrás de um botão "Filtros (n)"; a fila aparece na primeira tela
+- [x] **Testes:** FE1–FE5 + SLA, cards, busca com espera, URL compartilhável, paginação, falha ao atualizar
 
-Commits sugeridos:
+Decisões desta etapa:
+
+- **A URL é a fonte da verdade dos filtros**, e não um estado em memória.
+- **Cores de significado como tokens do tema** (`critical-high/medium/low`, `status-investigating/closed`), com versão clara e escura.
+- **Axios com `paramsSerializer: { indexes: null }`**: listas viram `status=OPEN&status=INVESTIGATING`, como o FastAPI espera (o padrão `status[]=` seria recusado).
+- **Busca sem `useEffect` para sincronizar com a URL:** ajuste de estado durante a renderização (padrão recomendado pelo React; o oxlint apontou o `setState` no efeito).
+
+Verificação visual e ao vivo (Playwright contra a API e o front locais):
+
+- Capturas em desktop claro e escuro, filtro pelo card, estado vazio e celular. Ajustes feitos a partir delas: linhas mais compactas (cabem mais incidentes), total de resultados visível, card ativo com contorno, filtros recolhidos no celular.
+- **Atualização automática comprovada:** com o painel aberto, o simulador enviou 3 incidentes e o total passou de 79 para 82 **sozinho, em ~8,6 s**, sem recarregar a página.
+
+Problemas encontrados e corrigidos (nos testes, não no app):
+
+- Testes de SLA calculavam o "agora" antes de criar o incidente: "há 16 min" virava 15,99 min. Corrigido calculando depois.
+- Teste dos cards lia o número antes de o resumo carregar (o card mostra esqueleto antes). Corrigido esperando o número.
+
+Verificação:
+
+- `tsc -b` e `oxlint`: sem erros nem avisos.
+- `vitest run`: **59 passaram** (27 novos), estáveis em 4 execuções seguidas; cobertura 93%.
+- `npm run build`: 171 kB gzip.
+
+Commits sugeridos (um comando por linha, a partir da raiz):
 
 ```bash
-git commit -m "feat(frontend): adiciona cards de resumo dos incidentes"
-git commit -m "feat(frontend): exibe lista de incidentes priorizada"
-git commit -m "feat(frontend): adiciona filtros de criticidade, categoria e status sincronizados com a URL"
-git commit -m "feat(frontend): trata estados de carregamento, vazio e erro"
-git commit -m "feat(frontend): atualiza incidentes automaticamente com polling e indicador de atualização"
-git commit -m "test(frontend): cobre estados da lista, exibição por prioridade e filtros"
+git add frontend/src/components/ui/skeleton.tsx frontend/src/index.css && git commit -m "chore(frontend): adiciona cores de criticidade e status ao tema e componente skeleton"
+
+git add frontend/src/api/client.ts frontend/src/api/incidents.ts frontend/src/features/incidents/constants.ts frontend/src/features/incidents/format.ts frontend/src/features/incidents/queries.ts frontend/src/features/incidents/use-incident-filters.ts frontend/src/lib/use-now.ts && git commit -m "feat(frontend): adiciona consulta de incidentes com filtros na URL e atualização automática"
+
+git add frontend/src/features/incidents/components frontend/src/features/incidents/DashboardPage.tsx && git commit -m "feat(frontend): implementa painel com cards de resumo, filtros e lista priorizada"
+
+git add frontend/src/features/incidents/dashboard.test.tsx frontend/src/features/incidents/format.test.ts frontend/src/test/server.ts frontend/src/test/factories.ts && git commit -m "test(frontend): cobre estados da lista, prioridade, SLA e filtros"
+
+git add PRD.md progress.md && git commit -m "docs: registra conclusão da etapa 11 e premissa de SLA"
 ```
 
 ### Etapa 12 — Ações e concorrência no front
 
-Status: pendente
+Status: **concluída** (21/10/2026) · Branch: `feat/incident-actions`
 
-- [ ] Drawer de detalhe com histórico de eventos
-- [ ] Assumir / liberar / mudar status com update otimista e rollback
-- [ ] 409 → toast explicando quem agiu antes + recarga
-- [ ] Botões com spinner e desabilitados durante a ação
-- [ ] Banner offline (`onlineManager`)
-- [ ] **Testes:** FE6 (otimista + 409) · FE7 (erro de rede + duplo clique) · FE8 (offline)
+- [x] Gaveta de detalhe (abre pela linha da lista e pela URL `?incident=ID`; Esc e "voltar" fecham): dados, nota de resolução, ações e histórico
+- [x] Ações por papel: **Aberto** → Assumir; **em investigação (meu)** → Fechar / Marcar inconclusivo (nota obrigatória, mín. 5 caracteres) / Devolver à fila; **em investigação (de outro)** → só leitura, com o nome do responsável; **encerrado** → Reabrir com motivo
+- [x] **Atualização otimista com rollback** (`use-incident-action.ts`): a tela muda na hora em todos os lugares onde o incidente aparece (lista e detalhe); erro desfaz; **409 aplica o estado real que vem na resposta** e avisa quem agiu antes
+- [x] Botões desabilitados com spinner só no botão clicado; nenhuma segunda ação durante uma em andamento
+- [x] **Sem conexão:** aviso fixo no topo; lista continua visível; ações desabilitadas com explicação (mesma fonte que o TanStack Query usa para pausar requisições)
+- [x] Histórico: "Ana Souza assumiu o incidente", "mudou para Fechado" com a nota, "Telemetria da Frota registrou o incidente"
+- [x] **Testes:** FE6 (otimista + 409) · FE7 (rede + duplo clique) · FE8 (offline) + fechar/liberar/reabrir enviando a versão lida, permissão por papel, abrir pela lista, fechar com Esc
 
-Commits sugeridos:
+**Verificação ao vivo do cenário central do case** (Playwright, dois navegadores separados contra a API local):
+
+1. Ana e Bruno abrem o mesmo incidente ("Engavetamento com vítimas"), ambos vendo "Aberto".
+2. Ana assume: "Incidente assumido. Você é o responsável."
+3. Bruno, com a tela desatualizada, clica em Assumir: a tela muda por um instante (otimista), a API responde 409, a mudança é desfeita e aparece **"Ana Souza assumiu este incidente antes de você."**; a gaveta passa a mostrar "Em investigação por Ana Souza", sem ações para ele.
+4. Ana fecha com nota; o histórico mostra a sequência completa.
+
+Ajuste feito a partir das capturas: os avisos (toasts) no canto superior direito cobriam o cabeçalho da gaveta; foram para o topo central.
+
+Problema encontrado e corrigido (no teste, não no app):
+
+- O servidor simulado (MSW) devolvia sempre o incidente original; depois do 409, a recarga do app trazia de volta "Aberto". Um servidor real devolve o estado novo (confirmado no teste ao vivo). O mock passou a **manter estado**: ações bem-sucedidas e o conflito atualizam o que ele devolve.
+
+Verificação:
+
+- `tsc -b` e `oxlint`: sem erros nem avisos.
+- `vitest run`: **70 passaram** (11 novos), estáveis em 3 execuções seguidas; cobertura 93%.
+- `npm run build`: 187 kB gzip.
+
+Commits sugeridos (um comando por linha, a partir da raiz):
 
 ```bash
-git commit -m "feat(frontend): adiciona drawer de detalhe do incidente com linha do tempo de eventos"
-git commit -m "feat(frontend): assume e muda status de incidentes com atualização otimista"
-git commit -m "feat(frontend): trata conflitos 409 com rollback e feedback ao usuário"
-git commit -m "feat(frontend): exibe aviso offline e pausa ações sem rede"
-git commit -m "test(frontend): cobre rollback otimista, conflitos e modo offline"
+git add frontend/src/components/ui/sheet.tsx frontend/src/components/ui/textarea.tsx && git commit -m "chore(frontend): adiciona componentes sheet e textarea do shadcn/ui"
+
+git add frontend/src/api/incidents.ts frontend/src/features/incidents/queries.ts && git commit -m "feat(frontend): adiciona chamadas de detalhe, histórico e ações do incidente"
+
+git add frontend/src/features/incidents/use-incident-action.ts frontend/src/lib/use-online.ts frontend/src/components/layout/OfflineBanner.tsx frontend/src/components/layout/AppLayout.tsx frontend/src/components/layout/AppToaster.tsx && git commit -m "feat(frontend): implementa ações com atualização otimista, conflito 409 e modo offline"
+
+git add frontend/src/features/incidents/components frontend/src/features/incidents/DashboardPage.tsx frontend/src/features/incidents/use-selected-incident.ts && git commit -m "feat(frontend): adiciona gaveta de detalhe com ações e histórico do incidente"
+
+git add frontend/src/features/incidents/actions.test.tsx frontend/src/test/render.tsx && git commit -m "test(frontend): cobre atualização otimista, conflitos, modo offline e ciclo de vida"
+
+git add progress.md && git commit -m "docs: registra conclusão da etapa 12"
 ```
 
 ### Etapa 13 — Criar e editar incidente
 
-Status: pendente
+Status: **concluída** (21/10/2026) · Branch: `feat/incident-form`
 
-- [ ] Formulário com criticidade sugerida pela categoria
-- [ ] Edição com `version`; exclusão com confirmação
-- [ ] Teste: validação do formulário e sugestão de criticidade
+- [x] "Novo incidente" no painel: formulário em gaveta lateral; ao registrar, abre o incidente criado (o analista já pode assumi-lo)
+- [x] **Criticidade sugerida pela categoria** (vítimas → Alta; mecânico → Baixa; demais → Média) até o analista escolher manualmente
+- [x] Validação no cliente com as mesmas regras da API (placa antiga ou Mercosul, rodovia `BR-116`, km com 1 casa decimal, UF); placa e rodovia normalizadas (`xyz-9a87` → `XYZ9A87`, `br-040` → `BR-040`)
+- [x] Erro da API mostrado no formulário; campo recusado pela API é marcado
+- [x] **`Idempotency-Key` por formulário aberto:** reenviar após falha de rede não duplica o incidente
+- [x] Editar (na gaveta de detalhe): envia **só os campos alterados** com a versão lida; 409 fecha o formulário e mostra os dados atuais
+- [x] Excluir com confirmação, enviando a versão; a gaveta fecha
+- [x] `select` nativo com o visual do shadcn (acessível; no celular abre a lista do sistema)
 
-Commit sugerido:
+Decisões desta etapa:
+
+- **Status e responsável não aparecem no formulário:** mudam só pelas ações de ciclo de vida, que têm regras próprias (mesma decisão da API).
+- **Edição parcial:** enviar só o que mudou evita sobrescrever um campo que outra pessoa alterou.
+- **`writeIncident` extraído para `cache.ts`:** usado pelas ações e pelas edições.
+
+Verificação ao vivo (Playwright contra a API local): criar pela tela (criticidade Alta sugerida; placa e rodovia gravadas normalizadas), editar o título e excluir com confirmação.
+
+Problemas encontrados e corrigidos:
+
+- **Defeito visual (em qualquer fechamento da gaveta):** durante a animação de saída, o conteúdo trocava para "Carregando incidente", porque o ID virava `null`. A gaveta passou a manter o último incidente até sair da tela, e as consultas param ao fechar. Verificado com Esc e com exclusão.
+- `watch` do React Hook Form trocado por `useWatch` (compatível com a memoização do React Compiler; apontado pelo oxlint).
+
+Verificação:
+
+- `tsc -b` e `oxlint`: sem erros nem avisos.
+- `vitest run`: **81 passaram** (11 novos), estáveis em 3 execuções seguidas; cobertura 93%.
+
+Commits sugeridos (um comando por linha, a partir da raiz):
 
 ```bash
-git commit -m "feat(frontend): adiciona formulário de criação e edição de incidente"
+git add frontend/src/components/ui/alert-dialog.tsx frontend/src/components/ui/native-select.tsx && git commit -m "chore(frontend): adiciona diálogo de confirmação e select nativo estilizado"
+
+git add frontend/src/features/incidents/cache.ts frontend/src/features/incidents/use-incident-action.ts && git commit -m "refactor(frontend): extrai atualização do cache de incidentes para módulo compartilhado"
+
+git add frontend/src/api/incidents.ts && git commit -m "feat(frontend): adiciona chamadas de criação, edição e exclusão de incidentes"
+
+git add frontend/src/features/incidents/form/incident-schema.ts frontend/src/features/incidents/form/IncidentFormSheet.tsx frontend/src/features/incidents/form/DeleteIncidentButton.tsx frontend/src/features/incidents/form/use-incident-mutations.ts frontend/src/features/incidents/DashboardPage.tsx frontend/src/features/incidents/components/IncidentDrawer.tsx frontend/src/features/incidents/queries.ts && git commit -m "feat(frontend): implementa formulário de criação, edição e exclusão de incidente"
+
+git add frontend/src/features/incidents/form/incident-form.test.tsx && git commit -m "test(frontend): cobre criação, validação, edição com conflito e exclusão"
+
+git add progress.md && git commit -m "docs: registra conclusão da etapa 13"
 ```
 
 ### Etapa 14 — Testes ponta a ponta (Playwright)
