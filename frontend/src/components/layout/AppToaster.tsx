@@ -4,5 +4,6 @@ import { useTheme } from '@/features/theme/theme-context'
 
 export function AppToaster() {
   const { resolvedTheme } = useTheme()
-  return <Toaster theme={resolvedTheme} position="top-right" richColors closeButton />
+  // Topo central: no canto direito, os avisos cobririam o cabeçalho da gaveta de detalhe.
+  return <Toaster theme={resolvedTheme} position="top-center" richColors closeButton />
 }
