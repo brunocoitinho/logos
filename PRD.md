@@ -287,6 +287,7 @@ frontend/src/
 
 ### 5.5 Design da informação (gestão por exceção)
 
+- **Cor reservada para significado:** a interface é neutra (cinzas, preto e branco). Cor aparece só onde carrega informação: criticidade, status e alertas. Se botões e marca fossem coloridos, competiriam com o incidente crítico pela atenção do analista.
 - **Filtro padrão:** só Aberto + Em Investigação. Fechados não competem pela atenção.
 - **Cards no topo:** "Alta abertas: 7", "Sem responsável: 12", "Em investigação: 9". Clicar aplica o filtro.
 - **Linha do incidente**, densa e escaneável:
@@ -346,6 +347,45 @@ O que ele entrega e qual requisito do case cada recurso atende:
 **Trade-off assumido:** é uma dependência nova para mim. Mitigação: uso só o essencial (`useQuery`, `useMutation`, `queryClient.invalidateQueries`, `setQueryData`).
 
 **Frase-resumo para o vídeo:** *"O Redux guarda o que o meu front decide. O TanStack Query gerencia uma cópia do que o servidor decide. Ele sabe quando essa cópia está velha, como recarregar e como desfazer quando o servidor diz não."*
+
+### 6.1 Por que Tailwind + shadcn/ui, e não Sass (argumento para o vídeo)
+
+**A escolha é pelo shadcn/ui; o Tailwind vem junto.** O shadcn entrega componentes acessíveis (gaveta lateral, diálogo, menus, tooltips) sobre o Radix: navegação por teclado, foco e leitor de tela já resolvidos. Esses componentes são estilizados com Tailwind.
+
+| Critério do case | Como a escolha ajuda |
+|---|---|
+| Atenção aos detalhes (espaçamento, tipografia) | Escala fixa de espaçamentos e tamanhos: a tela inteira segue o mesmo ritmo, sem valores soltos |
+| Modo claro/escuro | Cores definidas como tokens (`bg-background`, `text-muted-foreground`), que trocam sozinhas no tema escuro |
+| Prazo de 2 dias | Componentes prontos e acessíveis; o tempo vai para o design da informação, e não para reescrever um diálogo |
+
+**Comparação honesta com o que uso no dia a dia:**
+
+- *Sass + CSS Modules (meu portfólio):* daria o mesmo resultado, mas eu escreveria à mão o CSS da gaveta, do diálogo, dos menus e dos estados de foco, com estimativa de 4 a 6 h a mais. O Radix sem estilo continuaria disponível.
+- *Tailwind:* já vi em projeto no trabalho. O trade-off é o HTML com mais classes; em troca, o estilo fica ao lado do elemento e não existe CSS morto.
+
+**Frase-resumo para o vídeo:** *"Escolhi o shadcn pelos componentes acessíveis prontos; ele é feito em Tailwind. No meu portfólio uso Sass com CSS Modules, mas num prazo de dois dias preferi investir o tempo no design da informação, e não em reescrever um diálogo acessível."*
+
+**Cola: classes do projeto e o CSS equivalente**
+
+| Tailwind | CSS | Observação |
+|---|---|---|
+| `flex` · `flex-col` | `display: flex` · `flex-direction: column` | |
+| `items-center` · `justify-center` | `align-items: center` · `justify-content: center` | |
+| `gap-3` | `gap: 0.75rem` | Escala: cada unidade = 0,25rem (4 px) |
+| `p-6` · `px-4` · `py-6` | `padding: 1.5rem` · `padding-inline: 1rem` · `padding-block: 1.5rem` | |
+| `mx-auto` · `max-w-7xl` | `margin-inline: auto` · `max-width: 80rem` | Centraliza o conteúdo |
+| `min-h-svh` | `min-height: 100svh` | Altura da tela, inclusive no celular |
+| `text-sm` · `text-xs` · `text-2xl` | `font-size: 0.875rem` · `0.75rem` · `1.5rem` | Cada uma com altura de linha própria |
+| `font-semibold` · `tracking-tight` | `font-weight: 600` · `letter-spacing: -0.025em` | |
+| `text-muted-foreground` · `bg-background` | `color: var(--muted-foreground)` · `background: var(--background)` | Tokens: mudam no tema escuro |
+| `border-b` · `rounded-lg` | `border-bottom-width: 1px` · `border-radius: var(--radius)` | |
+| `sticky top-0 z-20` | `position: sticky; top: 0; z-index: 20` | Cabeçalho fixo ao rolar |
+| `bg-background/90 backdrop-blur` | fundo com 90% de opacidade + `backdrop-filter: blur()` | Efeito vidro no cabeçalho |
+| `size-5` | `width: 1.25rem; height: 1.25rem` | Ícones |
+| `hidden sm:block` | `display: none` + `@media (min-width: 640px) { display: block }` | Responsivo: o prefixo é o breakpoint |
+| `hover:` · `focus-visible:` · `dark:` | `:hover` · `:focus-visible` · dentro de `.dark` | Prefixo = estado ou tema |
+| `animate-spin` | `animation: spin 1s linear infinite` | Indicador de carregamento |
+| `cn('a', cond && 'b')` | junta classes condicionalmente | Equivalente ao `classnames`/`clsx` |
 
 ---
 

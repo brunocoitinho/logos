@@ -22,7 +22,7 @@ export function App() {
         </BrowserRouter>
         <AppToaster />
         {/* Painel do cache do TanStack Query; some automaticamente no build de produção. */}
-        <ReactQueryDevtools initialIsOpen={false} buttonPosition="bottom-left" />
+        <ReactQueryDevtools initialIsOpen={false} buttonPosition="bottom-right" />
       </QueryClientProvider>
     </ThemeProvider>
   )
