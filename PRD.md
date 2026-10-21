@@ -144,6 +144,18 @@ No front, um `409` gera: rollback da UI otimista, toast "Ana assumiu este incide
 
 > Por que não lock pessimista (`SELECT ... FOR UPDATE`)? Ele segura a linha enquanto o analista pensa. Numa operação com rede instável, isso trava registros. O otimista não segura nada e só falha quando há conflito real, que é raro.
 
+### 4.4 SLA de primeira resposta (premissa do MVP)
+
+Tempo máximo que um incidente pode ficar **Aberto** (sem ninguém assumir), por criticidade:
+
+| Criticidade | SLA |
+|---|---|
+| Alta | 15 min |
+| Média | 60 min |
+| Baixa | 4 h |
+
+Acima do SLA, o tempo de espera aparece em destaque na lista. Os valores são uma premissa a validar com o cliente; ficam em um único lugar no código (`frontend/src/features/incidents/constants.ts`).
+
 ---
 
 ## 5. Arquitetura

@@ -612,24 +612,54 @@ git add PRD.md progress.md && git commit -m "docs: registra conclusão da etapa 
 
 ### Etapa 11 — Painel de incidentes
 
-Status: pendente
+Status: **concluída** (20/10/2026) · Branch: `feat/incidents-dashboard`
 
-- [ ] Cards de resumo (clicáveis → aplicam filtro)
-- [ ] Lista priorizada (barra de criticidade, ícone da categoria, tempo de espera vivo, responsável)
-- [ ] Filtros em chips, sincronizados com a URL; padrão = Aberto + Em Investigação
-- [ ] Skeleton, estado vazio, estado de erro com "Tentar novamente"
-- [ ] Polling + indicador "atualizado há X s"
-- [ ] **Testes:** FE1–FE5
+- [x] Cards de resumo clicáveis (aplicam o filtro): "Alta, sem responsável" (acende em vermelho quando > 0), "Aguardando responsável", "Em investigação", "Encerrados"
+- [x] Lista priorizada na ordem da API: barra lateral, ícone e **texto** de criticidade (nunca só cor; formas diferentes por nível: octógono, triângulo, círculo); ícone e nome da categoria; rodovia/km, cidade, placa; status e responsável
+- [x] **Tempo de espera vivo** ("há 3 h 18 min", atualiza sozinho) com **SLA por criticidade** (premissa do MVP: Alta 15 min, Média 60 min, Baixa 4 h): aberto acima do SLA fica em destaque
+- [x] Indicador pulsante discreto para Alta + Acidente com Vítimas + sem responsável (respeita "reduzir movimento" do sistema)
+- [x] Filtros em chips (criticidade, status, categoria) + busca com espera de 300 ms; **sincronizados com a URL** (F5, "voltar" e link compartilhável funcionam); valores inválidos na URL são ignorados
+- [x] Estados: esqueleto no carregamento; erro com "Tentar novamente"; **falha ao atualizar mantém a lista na tela com aviso**; vazio "tudo em dia" × vazio "sem resultado para os filtros" (com "Limpar filtros"); troca de filtro sem piscar (dados anteriores esmaecidos)
+- [x] Atualização automática a cada 10 s + "Atualizado há X s" + botão "Atualizar agora"
+- [x] Total de resultados e paginação (100 por página)
+- [x] No celular: filtros recolhidos atrás de um botão "Filtros (n)"; a fila aparece na primeira tela
+- [x] **Testes:** FE1–FE5 + SLA, cards, busca com espera, URL compartilhável, paginação, falha ao atualizar
 
-Commits sugeridos:
+Decisões desta etapa:
+
+- **A URL é a fonte da verdade dos filtros**, e não um estado em memória.
+- **Cores de significado como tokens do tema** (`critical-high/medium/low`, `status-investigating/closed`), com versão clara e escura.
+- **Axios com `paramsSerializer: { indexes: null }`**: listas viram `status=OPEN&status=INVESTIGATING`, como o FastAPI espera (o padrão `status[]=` seria recusado).
+- **Busca sem `useEffect` para sincronizar com a URL:** ajuste de estado durante a renderização (padrão recomendado pelo React; o oxlint apontou o `setState` no efeito).
+
+Verificação visual e ao vivo (Playwright contra a API e o front locais):
+
+- Capturas em desktop claro e escuro, filtro pelo card, estado vazio e celular. Ajustes feitos a partir delas: linhas mais compactas (cabem mais incidentes), total de resultados visível, card ativo com contorno, filtros recolhidos no celular.
+- **Atualização automática comprovada:** com o painel aberto, o simulador enviou 3 incidentes e o total passou de 79 para 82 **sozinho, em ~8,6 s**, sem recarregar a página.
+
+Problemas encontrados e corrigidos (nos testes, não no app):
+
+- Testes de SLA calculavam o "agora" antes de criar o incidente: "há 16 min" virava 15,99 min. Corrigido calculando depois.
+- Teste dos cards lia o número antes de o resumo carregar (o card mostra esqueleto antes). Corrigido esperando o número.
+
+Verificação:
+
+- `tsc -b` e `oxlint`: sem erros nem avisos.
+- `vitest run`: **59 passaram** (27 novos), estáveis em 4 execuções seguidas; cobertura 93%.
+- `npm run build`: 171 kB gzip.
+
+Commits sugeridos (um comando por linha, a partir da raiz):
 
 ```bash
-git commit -m "feat(frontend): adiciona cards de resumo dos incidentes"
-git commit -m "feat(frontend): exibe lista de incidentes priorizada"
-git commit -m "feat(frontend): adiciona filtros de criticidade, categoria e status sincronizados com a URL"
-git commit -m "feat(frontend): trata estados de carregamento, vazio e erro"
-git commit -m "feat(frontend): atualiza incidentes automaticamente com polling e indicador de atualização"
-git commit -m "test(frontend): cobre estados da lista, exibição por prioridade e filtros"
+git add frontend/src/components/ui/skeleton.tsx frontend/src/index.css && git commit -m "chore(frontend): adiciona cores de criticidade e status ao tema e componente skeleton"
+
+git add frontend/src/api/client.ts frontend/src/api/incidents.ts frontend/src/features/incidents/constants.ts frontend/src/features/incidents/format.ts frontend/src/features/incidents/queries.ts frontend/src/features/incidents/use-incident-filters.ts frontend/src/lib/use-now.ts && git commit -m "feat(frontend): adiciona consulta de incidentes com filtros na URL e atualização automática"
+
+git add frontend/src/features/incidents/components frontend/src/features/incidents/DashboardPage.tsx && git commit -m "feat(frontend): implementa painel com cards de resumo, filtros e lista priorizada"
+
+git add frontend/src/features/incidents/dashboard.test.tsx frontend/src/features/incidents/format.test.ts frontend/src/test/server.ts frontend/src/test/factories.ts && git commit -m "test(frontend): cobre estados da lista, prioridade, SLA e filtros"
+
+git add PRD.md progress.md && git commit -m "docs: registra conclusão da etapa 11 e premissa de SLA"
 ```
 
 ### Etapa 12 — Ações e concorrência no front

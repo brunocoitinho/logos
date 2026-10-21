@@ -9,6 +9,9 @@ export const api = axios.create({
   baseURL: `${API_URL}/api`,
   // Sem timeout, uma rede ruim deixaria a tela "carregando" para sempre.
   timeout: 10_000,
+  // Listas viram parâmetros repetidos (status=OPEN&status=INVESTIGATING), como o FastAPI
+  // espera. O padrão do Axios seria status[]=OPEN, que a API recusaria.
+  paramsSerializer: { indexes: null },
 })
 
 api.interceptors.request.use((config) => {
