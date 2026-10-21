@@ -1,10 +1,14 @@
-import { useCallback } from 'react'
+import { Plus } from 'lucide-react'
+import { useCallback, useState } from 'react'
+
+import { Button } from '@/components/ui/button'
 
 import { FilterBar } from './components/FilterBar'
 import { FreshnessIndicator } from './components/FreshnessIndicator'
 import { IncidentDrawer } from './components/IncidentDrawer'
 import { IncidentList } from './components/IncidentList'
 import { SummaryCards } from './components/SummaryCards'
+import { IncidentFormSheet } from './form/IncidentFormSheet'
 import { useIncidentList, useIncidentSummary } from './queries'
 import { useIncidentFilters } from './use-incident-filters'
 import { useSelectedIncident } from './use-selected-incident'
@@ -15,6 +19,7 @@ export function DashboardPage() {
   const list = useIncidentList(filters)
   const summary = useIncidentSummary()
   const selected = useSelectedIncident()
+  const [creating, setCreating] = useState(false)
 
   const refresh = () => {
     void list.refetch()
@@ -36,11 +41,16 @@ export function DashboardPage() {
             Ordenados por prioridade: criticidade, gravidade e tempo de espera.
           </p>
         </div>
-        <FreshnessIndicator
-          updatedAt={list.dataUpdatedAt}
-          isFetching={list.isFetching}
-          onRefresh={refresh}
-        />
+        <div className="flex items-center gap-2">
+          <FreshnessIndicator
+            updatedAt={list.dataUpdatedAt}
+            isFetching={list.isFetching}
+            onRefresh={refresh}
+          />
+          <Button onClick={() => setCreating(true)}>
+            <Plus aria-hidden /> Novo incidente
+          </Button>
+        </div>
       </div>
 
       <SummaryCards summary={summary.data} filters={filters} onSelect={selectSummaryCard} />
@@ -67,6 +77,19 @@ export function DashboardPage() {
       />
 
       <IncidentDrawer incidentId={selected.selectedId} onClose={selected.close} />
+
+      <IncidentFormSheet
+        open={creating}
+        onOpenChange={setCreating}
+        form={{
+          mode: 'create',
+          // Depois de registrar, abre o incidente novo para o analista já poder assumi-lo.
+          onDone: (created) => {
+            setCreating(false)
+            selected.open(created.id)
+          },
+        }}
+      />
     </div>
   )
 }
