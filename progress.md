@@ -664,23 +664,49 @@ git add PRD.md progress.md && git commit -m "docs: registra conclusão da etapa 
 
 ### Etapa 12 — Ações e concorrência no front
 
-Status: pendente
+Status: **concluída** (21/10/2026) · Branch: `feat/incident-actions`
 
-- [ ] Drawer de detalhe com histórico de eventos
-- [ ] Assumir / liberar / mudar status com update otimista e rollback
-- [ ] 409 → toast explicando quem agiu antes + recarga
-- [ ] Botões com spinner e desabilitados durante a ação
-- [ ] Banner offline (`onlineManager`)
-- [ ] **Testes:** FE6 (otimista + 409) · FE7 (erro de rede + duplo clique) · FE8 (offline)
+- [x] Gaveta de detalhe (abre pela linha da lista e pela URL `?incident=ID`; Esc e "voltar" fecham): dados, nota de resolução, ações e histórico
+- [x] Ações por papel: **Aberto** → Assumir; **em investigação (meu)** → Fechar / Marcar inconclusivo (nota obrigatória, mín. 5 caracteres) / Devolver à fila; **em investigação (de outro)** → só leitura, com o nome do responsável; **encerrado** → Reabrir com motivo
+- [x] **Atualização otimista com rollback** (`use-incident-action.ts`): a tela muda na hora em todos os lugares onde o incidente aparece (lista e detalhe); erro desfaz; **409 aplica o estado real que vem na resposta** e avisa quem agiu antes
+- [x] Botões desabilitados com spinner só no botão clicado; nenhuma segunda ação durante uma em andamento
+- [x] **Sem conexão:** aviso fixo no topo; lista continua visível; ações desabilitadas com explicação (mesma fonte que o TanStack Query usa para pausar requisições)
+- [x] Histórico: "Ana Souza assumiu o incidente", "mudou para Fechado" com a nota, "Telemetria da Frota registrou o incidente"
+- [x] **Testes:** FE6 (otimista + 409) · FE7 (rede + duplo clique) · FE8 (offline) + fechar/liberar/reabrir enviando a versão lida, permissão por papel, abrir pela lista, fechar com Esc
 
-Commits sugeridos:
+**Verificação ao vivo do cenário central do case** (Playwright, dois navegadores separados contra a API local):
+
+1. Ana e Bruno abrem o mesmo incidente ("Engavetamento com vítimas"), ambos vendo "Aberto".
+2. Ana assume: "Incidente assumido. Você é o responsável."
+3. Bruno, com a tela desatualizada, clica em Assumir: a tela muda por um instante (otimista), a API responde 409, a mudança é desfeita e aparece **"Ana Souza assumiu este incidente antes de você."**; a gaveta passa a mostrar "Em investigação por Ana Souza", sem ações para ele.
+4. Ana fecha com nota; o histórico mostra a sequência completa.
+
+Ajuste feito a partir das capturas: os avisos (toasts) no canto superior direito cobriam o cabeçalho da gaveta; foram para o topo central.
+
+Problema encontrado e corrigido (no teste, não no app):
+
+- O servidor simulado (MSW) devolvia sempre o incidente original; depois do 409, a recarga do app trazia de volta "Aberto". Um servidor real devolve o estado novo (confirmado no teste ao vivo). O mock passou a **manter estado**: ações bem-sucedidas e o conflito atualizam o que ele devolve.
+
+Verificação:
+
+- `tsc -b` e `oxlint`: sem erros nem avisos.
+- `vitest run`: **70 passaram** (11 novos), estáveis em 3 execuções seguidas; cobertura 93%.
+- `npm run build`: 187 kB gzip.
+
+Commits sugeridos (um comando por linha, a partir da raiz):
 
 ```bash
-git commit -m "feat(frontend): adiciona drawer de detalhe do incidente com linha do tempo de eventos"
-git commit -m "feat(frontend): assume e muda status de incidentes com atualização otimista"
-git commit -m "feat(frontend): trata conflitos 409 com rollback e feedback ao usuário"
-git commit -m "feat(frontend): exibe aviso offline e pausa ações sem rede"
-git commit -m "test(frontend): cobre rollback otimista, conflitos e modo offline"
+git add frontend/src/components/ui/sheet.tsx frontend/src/components/ui/textarea.tsx && git commit -m "chore(frontend): adiciona componentes sheet e textarea do shadcn/ui"
+
+git add frontend/src/api/incidents.ts frontend/src/features/incidents/queries.ts && git commit -m "feat(frontend): adiciona chamadas de detalhe, histórico e ações do incidente"
+
+git add frontend/src/features/incidents/use-incident-action.ts frontend/src/lib/use-online.ts frontend/src/components/layout/OfflineBanner.tsx frontend/src/components/layout/AppLayout.tsx frontend/src/components/layout/AppToaster.tsx && git commit -m "feat(frontend): implementa ações com atualização otimista, conflito 409 e modo offline"
+
+git add frontend/src/features/incidents/components frontend/src/features/incidents/DashboardPage.tsx frontend/src/features/incidents/use-selected-incident.ts && git commit -m "feat(frontend): adiciona gaveta de detalhe com ações e histórico do incidente"
+
+git add frontend/src/features/incidents/actions.test.tsx frontend/src/test/render.tsx && git commit -m "test(frontend): cobre atualização otimista, conflitos, modo offline e ciclo de vida"
+
+git add progress.md && git commit -m "docs: registra conclusão da etapa 12"
 ```
 
 ### Etapa 13 — Criar e editar incidente
