@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button'
 import { useAuth } from '@/features/auth/auth-context'
 import { ThemeToggle } from '@/features/theme/ThemeToggle'
 
+import { OfflineBanner } from './OfflineBanner'
+
 export function AppLayout() {
   const { user, logout } = useAuth()
 
@@ -33,6 +35,7 @@ export function AppLayout() {
           </div>
         </div>
       </header>
+      <OfflineBanner />
 
       <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6">
         <Outlet />

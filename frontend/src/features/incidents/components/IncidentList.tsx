@@ -23,6 +23,7 @@ interface IncidentListProps {
   onRetry: () => void
   onClearFilters: () => void
   onPageChange: (offset: number) => void
+  onSelect: (id: number) => void
 }
 
 export function IncidentList({
@@ -35,6 +36,7 @@ export function IncidentList({
   onRetry,
   onClearFilters,
   onPageChange,
+  onSelect,
 }: IncidentListProps) {
   // Faz o "há X min" de cada incidente andar sozinho.
   const now = useNow(30_000)
@@ -111,7 +113,7 @@ export function IncidentList({
         className={cn('space-y-2 transition-opacity', isPlaceholderData && 'opacity-60')}
       >
         {data.items.map((incident) => (
-          <IncidentRow key={incident.id} incident={incident} now={now} />
+          <IncidentRow key={incident.id} incident={incident} now={now} onSelect={onSelect} />
         ))}
       </ul>
 

@@ -1,9 +1,9 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { getIncidentSummary, listIncidents } from '@/api/incidents'
+import { getIncident, getIncidentSummary, listIncidentEvents, listIncidents } from '@/api/incidents'
 import type { IncidentListParams } from '@/api/incidents'
 import type { ApiError } from '@/api/errors'
-import type { IncidentList, IncidentSummary } from '@/api/types'
+import type { Incident, IncidentEvent, IncidentList, IncidentSummary } from '@/api/types'
 
 import { PAGE_SIZE, REFRESH_INTERVAL_MS } from './constants'
 import type { IncidentFilters } from './use-incident-filters'
@@ -13,6 +13,8 @@ export const incidentKeys = {
   lists: () => [...incidentKeys.all, 'list'] as const,
   list: (params: IncidentListParams) => [...incidentKeys.lists(), params] as const,
   summary: () => [...incidentKeys.all, 'summary'] as const,
+  detail: (id: number) => [...incidentKeys.all, 'detail', id] as const,
+  events: (id: number) => [...incidentKeys.all, 'events', id] as const,
 }
 
 export function toListParams(filters: IncidentFilters): IncidentListParams {
@@ -44,4 +46,36 @@ export function useIncidentSummary() {
     queryFn: ({ signal }) => getIncidentSummary(signal),
     refetchInterval: REFRESH_INTERVAL_MS,
   })
+}
+
+export function useIncident(id: number | null) {
+  const queryClient = useQueryClient()
+  return useQuery<Incident, ApiError>({
+    queryKey: incidentKeys.detail(id ?? 0),
+    queryFn: ({ signal }) => getIncident(id!, signal),
+    enabled: id !== null,
+    // A gaveta abre na hora com o que já está na lista; os dados completos chegam em seguida.
+    placeholderData: () => findInLists(queryClient.getQueriesData<IncidentList>({ queryKey: incidentKeys.lists() }), id),
+    refetchInterval: REFRESH_INTERVAL_MS,
+  })
+}
+
+export function useIncidentEvents(id: number | null) {
+  return useQuery<IncidentEvent[], ApiError>({
+    queryKey: incidentKeys.events(id ?? 0),
+    queryFn: ({ signal }) => listIncidentEvents(id!, signal),
+    enabled: id !== null,
+    refetchInterval: REFRESH_INTERVAL_MS,
+  })
+}
+
+function findInLists(
+  lists: [unknown, IncidentList | undefined][],
+  id: number | null,
+): Incident | undefined {
+  for (const [, list] of lists) {
+    const found = list?.items.find((incident) => incident.id === id)
+    if (found) return found
+  }
+  return undefined
 }

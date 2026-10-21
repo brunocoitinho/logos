@@ -2,16 +2,19 @@ import { useCallback } from 'react'
 
 import { FilterBar } from './components/FilterBar'
 import { FreshnessIndicator } from './components/FreshnessIndicator'
+import { IncidentDrawer } from './components/IncidentDrawer'
 import { IncidentList } from './components/IncidentList'
 import { SummaryCards } from './components/SummaryCards'
 import { useIncidentList, useIncidentSummary } from './queries'
 import { useIncidentFilters } from './use-incident-filters'
+import { useSelectedIncident } from './use-selected-incident'
 import type { IncidentFilters } from './use-incident-filters'
 
 export function DashboardPage() {
   const { filters, setFilters, toggle, clear, isDefault } = useIncidentFilters()
   const list = useIncidentList(filters)
   const summary = useIncidentSummary()
+  const selected = useSelectedIncident()
 
   const refresh = () => {
     void list.refetch()
@@ -60,7 +63,10 @@ export function DashboardPage() {
         onRetry={() => void list.refetch()}
         onClearFilters={clear}
         onPageChange={(offset) => setFilters({ ...filters, offset })}
+        onSelect={selected.open}
       />
+
+      <IncidentDrawer incidentId={selected.selectedId} onClose={selected.close} />
     </div>
   )
 }
