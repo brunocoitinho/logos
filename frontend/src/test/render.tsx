@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import type { ReactElement } from 'react'
 import { MemoryRouter } from 'react-router'
 
+import { AppToaster } from '@/components/layout/AppToaster'
 import { AuthProvider } from '@/features/auth/AuthProvider'
 import { ThemeProvider } from '@/features/theme/ThemeProvider'
 import { createQueryClient } from '@/lib/query-client'
@@ -28,6 +29,7 @@ export function renderWithProviders(ui: ReactElement, { route = '/' }: RenderOpt
         <MemoryRouter initialEntries={[route]}>
           <AuthProvider>{ui}</AuthProvider>
         </MemoryRouter>
+        <AppToaster />
       </QueryClientProvider>
     </ThemeProvider>,
   )
