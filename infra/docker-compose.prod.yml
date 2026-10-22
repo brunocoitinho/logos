@@ -43,6 +43,7 @@ services:
       DATABASE_URL: mysql+pymysql://logos:${MYSQL_PASSWORD}@mysql:3306/logos
       JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET no .env}
       CORS_ORIGINS: ${CORS_ORIGINS:?defina CORS_ORIGINS no .env}
+      CORS_ORIGIN_REGEX: ${CORS_ORIGIN_REGEX:-}
     depends_on:
       mysql:
         condition: service_healthy

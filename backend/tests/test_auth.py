@@ -1,4 +1,5 @@
 from datetime import timedelta
+from unittest.mock import patch
 
 import jwt
 import pytest
@@ -6,10 +7,10 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from sqlalchemy import select
 
-from app.core.config import Settings
+from app.core.config import Settings, get_settings
 from app.core.rate_limit import LoginRateLimiter
 from app.core.security import create_access_token
-from app.main import app
+from app.main import app, create_app
 from app.models import IncidentEvent
 from app.models.enums import IncidentEventType
 from tests.factories import TEST_PASSWORD, create_incident, create_user
@@ -254,3 +255,36 @@ def test_production_requires_real_jwt_secret():
         Settings(environment="production", jwt_secret="curto")
 
     Settings(environment="production", jwt_secret="x" * 32)
+
+
+def test_cors_regex_allows_dynamic_preview_origins():
+    """Prévias de PR da Vercel têm URL nova a cada deploy: liberadas por padrão, não por lista."""
+    settings = Settings(
+        cors_origins="https://logos.startbc.online",
+        cors_origin_regex=r"https://logos-[a-z0-9-]+-time\.vercel\.app",
+    )
+    get_settings.cache_clear()
+    try:
+        with patch("app.main.get_settings", return_value=settings):
+            client = TestClient(create_app())
+    finally:
+        get_settings.cache_clear()
+
+    def preflight(origin: str):
+        return client.options(
+            "/api/incidents",
+            headers={"Origin": origin, "Access-Control-Request-Method": "GET"},
+        )
+
+    preview = "https://logos-git-feat-x-time.vercel.app"
+    assert preflight(preview).headers.get("access-control-allow-origin") == preview
+    assert (
+        "access-control-allow-origin" not in preflight("https://logos-x-outro.vercel.app").headers
+    )
+    assert "access-control-allow-origin" not in preflight("https://malicioso.example").headers
+
+
+def test_empty_cors_regex_means_no_pattern():
+    assert Settings(cors_origin_regex="").cors_origin_regex is None
+    assert Settings(cors_origin_regex="   ").cors_origin_regex is None
+    assert Settings().cors_origin_regex is None

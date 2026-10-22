@@ -773,19 +773,40 @@ git commit -m "test(e2e): cobre fluxo de login e claim simultâneo entre dois an
 
 ### Etapa 15 — Deploy do front e CI
 
-Status: pendente
+Status: **concluída** (21/10/2026) · Branch: `chore/deploy-frontend-ci`
 
-- [ ] Vercel: `VITE_API_URL`, `vercel.json` com rewrite para SPA
-- [ ] (Opcional) domínio `logos.<dominio>` na Vercel
-- [ ] Ajustar o CORS da API para o domínio final
-- [ ] GitHub Actions: lint + testes + cobertura do backend (MySQL como service container) e do frontend
-- [ ] Badge do CI no README
+**Aplicação no ar:** front em **https://logos.startbc.online** (alternativa: https://logos-seven-orcin.vercel.app) → API em **https://logos-api.startbc.online**.
 
-Commits sugeridos:
+- [x] Projeto na Vercel com **Root Directory `frontend`** e `VITE_API_URL=https://logos-api.startbc.online`
+- [x] Domínio `logos.startbc.online` na Vercel: CNAME `logos` → `a52f1b3d4a342723.vercel-dns-017.com` no hPanel; HTTPS emitido pela Vercel
+- [x] `frontend/vercel.json`: rewrite de SPA (F5 em `/login` e `/?incident=42`), cache de 1 ano para `/assets/*` (arquivos com hash) e cabeçalhos de segurança (`nosniff`, `DENY` para iframe, `Referrer-Policy`)
+- [x] CORS de produção na VPS (`infra/.env`): `CORS_ORIGINS=https://logos.startbc.online,https://logos-seven-orcin.vercel.app` (sem `localhost`)
+- [x] **`CORS_ORIGIN_REGEX`** no backend para as prévias de PR da Vercel (URL nova a cada deploy); vazio = sem padrão; com testes (prévia do projeto liberada; prévia de outro projeto e site qualquer bloqueados)
+- [x] **CI do frontend** (`.github/workflows/frontend.yml`): oxlint, testes com cobertura mínima (85% statements/linhas, 80% branches/funções) e build; o deploy fica com a integração nativa da Vercel
+- [x] Badge do CI do frontend no README
+
+Verificação:
+
+- Workflow validado com o actionlint (0 problemas).
+- **CI simulado num container Linux** (`node:22`, do zero): `npm ci`, lint, testes e build passaram. Elimina o risco de o lockfile gerado no Windows omitir binários nativos do Linux (Vite/rolldown, oxlint, Tailwind), que quebraria o build no Actions e na Vercel.
+- Backend: **212 testes** passando.
+- **Login real em produção** com Playwright, pelos dois endereços (Ana no `.vercel.app`, Bruno no domínio próprio): 78 incidentes carregados, nenhum erro.
+
+Ocorrências desta etapa:
+
+- PR #16 (Etapa 13) foi mergeado na `main` em vez do `env/dev`. Corrigido com o PR #17 (mesmo branch → `env/dev`), como no PR #3. Isso adiantou o frontend para a `main`, e a Vercel publicou a produção a partir dela.
+- Antes do `vercel.json` chegar à `main`, o F5 em rotas internas (ex.: `/login`) respondia 404 na Vercel. Corrigido com o merge desta etapa na `main`.
+
+Commits sugeridos (um comando por linha, a partir da raiz):
 
 ```bash
-git commit -m "chore(frontend): configura deploy da SPA na Vercel"
-git commit -m "ci: executa lint, testes e cobertura do backend e do frontend"
+git add frontend/vercel.json && git commit -m "chore(frontend): configura deploy da SPA na Vercel"
+
+git add backend/app/core/config.py backend/app/main.py backend/tests/test_auth.py infra/docker-compose.prod.yml infra/.env.example && git commit -m "feat(backend): aceita padrão de origem no CORS para as prévias da Vercel"
+
+git add .github/workflows/frontend.yml README.md && git commit -m "ci: adiciona pipeline do frontend com lint, testes, cobertura e build"
+
+git add progress.md && git commit -m "docs: registra deploy do frontend e CI"
 ```
 
 ### Etapa 16 — Documentação final
