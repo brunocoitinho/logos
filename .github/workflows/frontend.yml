@@ -1,0 +1,57 @@
+# CI do frontend: lint, tipagem, testes (com cobertura mínima) e build em todo PR.
+# O deploy fica com a integração da Vercel com o GitHub: prévia a cada PR e produção a
+# cada push na main.
+
+name: Frontend
+
+on:
+  pull_request:
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend.yml"
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Lint, testes e build
+    runs-on: ubuntu-latest
+    concurrency:
+      group: frontend-${{ github.ref }}
+      cancel-in-progress: true
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Instala dependências
+        run: npm ci
+
+      - name: Lint (oxlint)
+        run: npm run lint
+
+      - name: Testes (falha se a cobertura cair abaixo de 85%)
+        run: >-
+          npx vitest run --coverage
+          --coverage.thresholds.statements=85
+          --coverage.thresholds.branches=80
+          --coverage.thresholds.functions=80
+          --coverage.thresholds.lines=85
+
+      - name: Tipagem e build de produção
+        run: npm run build
