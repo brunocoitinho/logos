@@ -66,3 +66,39 @@ export async function transitionIncident(
   const { data } = await api.post<Incident>(`/incidents/${id}/transition`, body)
   return data
 }
+
+export interface IncidentInput {
+  title: string
+  description: string | null
+  category: IncidentCategory
+  criticality: Criticality
+  vehicle_plate: string
+  highway: string
+  km: number
+  city: string
+  state: string
+}
+
+/**
+ * A chave de idempotência acompanha o formulário: se a rede falhar e o analista enviar de
+ * novo, a API devolve o incidente já criado em vez de duplicá-lo.
+ */
+export async function createIncident(body: IncidentInput, idempotencyKey: string): Promise<Incident> {
+  const { data } = await api.post<Incident>('/incidents', body, {
+    headers: { 'Idempotency-Key': idempotencyKey },
+  })
+  return data
+}
+
+/** Envia só os campos alterados, com a versão lida (a API devolve 409 se ficou desatualizada). */
+export async function updateIncident(
+  id: number,
+  body: Partial<IncidentInput> & { version: number },
+): Promise<Incident> {
+  const { data } = await api.patch<Incident>(`/incidents/${id}`, body)
+  return data
+}
+
+export async function deleteIncident(id: number, version: number): Promise<void> {
+  await api.delete(`/incidents/${id}`, { params: { version } })
+}

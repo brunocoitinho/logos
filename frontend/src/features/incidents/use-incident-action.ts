@@ -1,12 +1,13 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import type { QueryClient, QueryKey } from '@tanstack/react-query'
+import type { QueryKey } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
 import { claimIncident, releaseIncident, transitionIncident } from '@/api/incidents'
 import type { ApiError } from '@/api/errors'
-import type { Incident, IncidentList, IncidentStatus, User } from '@/api/types'
+import type { Incident, IncidentStatus, User } from '@/api/types'
 import { useAuth } from '@/features/auth/auth-context'
 
+import { refreshIncidents, writeIncident } from './cache'
 import { incidentKeys } from './queries'
 
 export type IncidentAction =
@@ -67,16 +68,6 @@ export function successMessage(action: IncidentAction): string {
   return 'Incidente reaberto.'
 }
 
-/** Grava a versão do incidente no detalhe e em todas as listas em cache que o contêm. */
-function writeIncident(queryClient: QueryClient, incident: Incident) {
-  queryClient.setQueryData(incidentKeys.detail(incident.id), incident)
-  queryClient.setQueriesData<IncidentList>({ queryKey: incidentKeys.lists() }, (list) =>
-    list
-      ? { ...list, items: list.items.map((item) => (item.id === incident.id ? incident : item)) }
-      : list,
-  )
-}
-
 /**
  * Ações do ciclo de vida com atualização otimista:
  *
@@ -119,6 +110,6 @@ export function useIncidentAction(incident: Incident | undefined) {
       toast.success(successMessage(action))
     },
 
-    onSettled: () => queryClient.invalidateQueries({ queryKey: incidentKeys.all }),
+    onSettled: () => refreshIncidents(queryClient),
   })
 }

@@ -48,23 +48,23 @@ export function useIncidentSummary() {
   })
 }
 
-export function useIncident(id: number | null) {
+export function useIncident(id: number | null, active = true) {
   const queryClient = useQueryClient()
   return useQuery<Incident, ApiError>({
     queryKey: incidentKeys.detail(id ?? 0),
     queryFn: ({ signal }) => getIncident(id!, signal),
-    enabled: id !== null,
+    enabled: active && id !== null,
     // A gaveta abre na hora com o que já está na lista; os dados completos chegam em seguida.
     placeholderData: () => findInLists(queryClient.getQueriesData<IncidentList>({ queryKey: incidentKeys.lists() }), id),
     refetchInterval: REFRESH_INTERVAL_MS,
   })
 }
 
-export function useIncidentEvents(id: number | null) {
+export function useIncidentEvents(id: number | null, active = true) {
   return useQuery<IncidentEvent[], ApiError>({
     queryKey: incidentKeys.events(id ?? 0),
     queryFn: ({ signal }) => listIncidentEvents(id!, signal),
-    enabled: id !== null,
+    enabled: active && id !== null,
     refetchInterval: REFRESH_INTERVAL_MS,
   })
 }

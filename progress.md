@@ -711,16 +711,49 @@ git add progress.md && git commit -m "docs: registra conclusão da etapa 12"
 
 ### Etapa 13 — Criar e editar incidente
 
-Status: pendente
+Status: **concluída** (21/10/2026) · Branch: `feat/incident-form`
 
-- [ ] Formulário com criticidade sugerida pela categoria
-- [ ] Edição com `version`; exclusão com confirmação
-- [ ] Teste: validação do formulário e sugestão de criticidade
+- [x] "Novo incidente" no painel: formulário em gaveta lateral; ao registrar, abre o incidente criado (o analista já pode assumi-lo)
+- [x] **Criticidade sugerida pela categoria** (vítimas → Alta; mecânico → Baixa; demais → Média) até o analista escolher manualmente
+- [x] Validação no cliente com as mesmas regras da API (placa antiga ou Mercosul, rodovia `BR-116`, km com 1 casa decimal, UF); placa e rodovia normalizadas (`xyz-9a87` → `XYZ9A87`, `br-040` → `BR-040`)
+- [x] Erro da API mostrado no formulário; campo recusado pela API é marcado
+- [x] **`Idempotency-Key` por formulário aberto:** reenviar após falha de rede não duplica o incidente
+- [x] Editar (na gaveta de detalhe): envia **só os campos alterados** com a versão lida; 409 fecha o formulário e mostra os dados atuais
+- [x] Excluir com confirmação, enviando a versão; a gaveta fecha
+- [x] `select` nativo com o visual do shadcn (acessível; no celular abre a lista do sistema)
 
-Commit sugerido:
+Decisões desta etapa:
+
+- **Status e responsável não aparecem no formulário:** mudam só pelas ações de ciclo de vida, que têm regras próprias (mesma decisão da API).
+- **Edição parcial:** enviar só o que mudou evita sobrescrever um campo que outra pessoa alterou.
+- **`writeIncident` extraído para `cache.ts`:** usado pelas ações e pelas edições.
+
+Verificação ao vivo (Playwright contra a API local): criar pela tela (criticidade Alta sugerida; placa e rodovia gravadas normalizadas), editar o título e excluir com confirmação.
+
+Problemas encontrados e corrigidos:
+
+- **Defeito visual (em qualquer fechamento da gaveta):** durante a animação de saída, o conteúdo trocava para "Carregando incidente", porque o ID virava `null`. A gaveta passou a manter o último incidente até sair da tela, e as consultas param ao fechar. Verificado com Esc e com exclusão.
+- `watch` do React Hook Form trocado por `useWatch` (compatível com a memoização do React Compiler; apontado pelo oxlint).
+
+Verificação:
+
+- `tsc -b` e `oxlint`: sem erros nem avisos.
+- `vitest run`: **81 passaram** (11 novos), estáveis em 3 execuções seguidas; cobertura 93%.
+
+Commits sugeridos (um comando por linha, a partir da raiz):
 
 ```bash
-git commit -m "feat(frontend): adiciona formulário de criação e edição de incidente"
+git add frontend/src/components/ui/alert-dialog.tsx frontend/src/components/ui/native-select.tsx && git commit -m "chore(frontend): adiciona diálogo de confirmação e select nativo estilizado"
+
+git add frontend/src/features/incidents/cache.ts frontend/src/features/incidents/use-incident-action.ts && git commit -m "refactor(frontend): extrai atualização do cache de incidentes para módulo compartilhado"
+
+git add frontend/src/api/incidents.ts && git commit -m "feat(frontend): adiciona chamadas de criação, edição e exclusão de incidentes"
+
+git add frontend/src/features/incidents/form/incident-schema.ts frontend/src/features/incidents/form/IncidentFormSheet.tsx frontend/src/features/incidents/form/DeleteIncidentButton.tsx frontend/src/features/incidents/form/use-incident-mutations.ts frontend/src/features/incidents/DashboardPage.tsx frontend/src/features/incidents/components/IncidentDrawer.tsx frontend/src/features/incidents/queries.ts && git commit -m "feat(frontend): implementa formulário de criação, edição e exclusão de incidente"
+
+git add frontend/src/features/incidents/form/incident-form.test.tsx && git commit -m "test(frontend): cobre criação, validação, edição com conflito e exclusão"
+
+git add progress.md && git commit -m "docs: registra conclusão da etapa 13"
 ```
 
 ### Etapa 14 — Testes ponta a ponta (Playwright)

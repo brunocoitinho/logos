@@ -1,4 +1,5 @@
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, Pencil } from 'lucide-react'
+import { useState } from 'react'
 import type { ReactNode } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -7,6 +8,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 
 import { CATEGORY, CRITICALITY, STATUS } from '../constants'
+import { DeleteIncidentButton } from '../form/DeleteIncidentButton'
+import { IncidentFormSheet } from '../form/IncidentFormSheet'
 import { formatDateTime, formatLocation } from '../format'
 import { useIncident, useIncidentEvents } from '../queries'
 import { IncidentActions } from './IncidentActions'
@@ -18,12 +21,19 @@ interface IncidentDrawerProps {
 }
 
 export function IncidentDrawer({ incidentId, onClose }: IncidentDrawerProps) {
-  const incident = useIncident(incidentId)
-  const events = useIncidentEvents(incidentId)
+  const isOpen = incidentId !== null
+  // Ao fechar, o painel desliza para fora ainda mostrando o último incidente (sem isso, o
+  // conteúdo virava "Carregando..." durante a animação). As consultas param ao fechar.
+  const [displayedId, setDisplayedId] = useState(incidentId)
+  if (incidentId !== null && incidentId !== displayedId) setDisplayedId(incidentId)
+
+  const incident = useIncident(displayedId, isOpen)
+  const events = useIncidentEvents(displayedId, isOpen)
   const data = incident.data
+  const [editing, setEditing] = useState(false)
 
   return (
-    <Sheet open={incidentId !== null} onOpenChange={(open) => !open && onClose()}>
+    <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <SheetContent className="w-full gap-0 overflow-y-auto sm:max-w-lg">
         {!data ? (
           <DrawerFallback
@@ -39,7 +49,19 @@ export function IncidentDrawer({ incidentId, onClose }: IncidentDrawerProps) {
               <SheetDescription>
                 {formatLocation(data)} · {data.city}/{data.state}
               </SheetDescription>
+              <div className="flex gap-2 pt-1">
+                <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
+                  <Pencil aria-hidden /> Editar
+                </Button>
+                <DeleteIncidentButton incident={data} onDeleted={onClose} />
+              </div>
             </SheetHeader>
+
+            <IncidentFormSheet
+              open={editing}
+              onOpenChange={setEditing}
+              form={{ mode: 'edit', incident: data, onDone: () => setEditing(false) }}
+            />
 
             <div className="space-y-6 p-4">
               <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
