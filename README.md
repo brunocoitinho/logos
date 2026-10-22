@@ -9,7 +9,7 @@ MVP de uma plataforma que centraliza e prioriza os incidentes de uma frota de 5.
 |---|---|
 | **Aplicação** | https://logos.startbc.online |
 | **API (Swagger)** | https://logos-api.startbc.online/docs |
-| **Vídeo** | LINK_DO_VIDEO |
+| **Vídeo** | [LINK_DO_VIDEO](https://youtu.be/iwJxKY33mR8) |
 
 **Acesso de demonstração** (também na tela de login, com um clique): `ana@logos.demo`, `bruno@logos.demo` ou `carla@logos.demo` · senha **`logos2026`**
 
