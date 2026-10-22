@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import model_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEV_JWT_SECRET = "dev-secret-apenas-para-desenvolvimento-local"
@@ -20,6 +20,9 @@ class Settings(BaseSettings):
 
     # Lista separada por vírgula, ex.: "http://localhost:5173,https://logos.startbc.online"
     cors_origins: str = "http://localhost:5173"
+    # Padrão opcional para origens dinâmicas, como as prévias de PR da Vercel
+    # (ex.: r"https://logos-[a-z0-9-]+-brunocoitinhos-projects\.vercel\.app").
+    cors_origin_regex: str | None = None
 
     jwt_secret: str = DEV_JWT_SECRET
     jwt_algorithm: str = "HS256"
@@ -36,6 +39,14 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
+    @field_validator("cors_origin_regex")
+    @classmethod
+    def empty_regex_means_none(cls, value: str | None) -> str | None:
+        # "CORS_ORIGIN_REGEX=" sem valor no .env significa "sem padrão", não um regex vazio.
+        if value is None or not value.strip():
+            return None
+        return value.strip()
 
     @model_validator(mode="after")
     def require_real_secret_in_production(self) -> "Settings":

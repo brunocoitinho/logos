@@ -1,6 +1,7 @@
 # Logos — Central de Resposta a Incidentes
 
 [![Backend](https://github.com/brunocoitinho/logos/actions/workflows/backend.yml/badge.svg)](https://github.com/brunocoitinho/logos/actions/workflows/backend.yml)
+[![Frontend](https://github.com/brunocoitinho/logos/actions/workflows/frontend.yml/badge.svg)](https://github.com/brunocoitinho/logos/actions/workflows/frontend.yml)
 
 MVP de uma plataforma para centralizar e priorizar incidentes de uma frota de 5.000 caminhões, substituindo a operação via WhatsApp e planilhas manuais.
 
